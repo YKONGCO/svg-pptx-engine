@@ -1,0 +1,25 @@
+{
+	"compilerOptions": {
+		"allowSyntheticDefaultImports": true,
+		"declaration": true,
+		"declarationDir": "./types",
+		"lib": [
+			"dom",
+			"es2020"
+		],
+		"module": "ES2020",
+		"moduleResolution": "node",
+		"noImplicitAny": false,
+		"outDir": "./dist",
+		"rootDir": "./src",
+		"sourceMap": true,
+		"strict": true,
+		"strictNullChecks": false,
+		"target": "es2016"
+	},
+	"display": "Recommended",
+	"$schema": "https://json.schemastore.org/tsconfig",
+	"include": [
+		"src/**/*"
+	]
+}

@@ -1,0 +1,39 @@
+{
+  "name": "svg-pptx-engine",
+  "version": "1.0.0",
+  "description": "SVG to PPTX converter with intermediate format",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "build:pptxgen": "cd packages/pptxgenjs && tsc",
+    "build:all": "npm run build:pptxgen && npm run build",
+    "dev": "tsc --watch",
+    "lint": "eslint src --ext .ts",
+    "test": "jest"
+  },
+  "keywords": [
+    "svg",
+    "pptx",
+    "converter",
+    "slides"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "fast-xml-parser": "^5.5.6",
+    "jszip": "^3.10.1",
+    "pptxgenjs": "file:packages/pptxgenjs",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/jszip": "^3.4.0",
+    "@types/node": "^25.5.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/parser": "^8.57.1",
+    "eslint": "^10.0.3",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
+    "typescript": "^5.3.3"
+  }
+}

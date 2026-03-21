@@ -1,0 +1,8 @@
+.git/
+.claude/
+dist/
+node_modules/
+*.pptx
+*.svg
+packages/pptxgenjs/dist/
+packages/pptxgenjs/node_modules/

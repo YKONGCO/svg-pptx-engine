@@ -1,0 +1,10 @@
+// SVG module - SVG parsing and conversion to SIF
+export * from './parser'
+export * from './converter'
+export * from './converters/color'
+export * from './converters/gradient'
+export * from './converters/filter'
+export * from './converters/shape'
+export * from './converters/text'
+export * from './converters/group'
+export * from './converters/media'
