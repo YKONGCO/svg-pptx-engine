@@ -18,7 +18,7 @@ import type { LineElement } from '../../sif/types/elements/line'
 import type { VideoElement } from '../../sif/types/elements/video'
 import type { AudioElement } from '../../sif/types/elements/audio'
 import { convertShape } from './shape'
-import { convertText } from './text'
+import { convertTextOrFormula } from './text'
 import { convertImage } from './image'
 import { convertLine } from './line'
 import { convertVideo } from './video'
@@ -28,7 +28,7 @@ import { convertAudio } from './audio'
  * Result type for a converted element (can be shape, text, image, line, video, or nested group)
  */
 export interface ConvertedGroupChild {
-  type: 'shape' | 'text' | 'image' | 'line' | 'video' | 'audio' | 'group'
+  type: 'shape' | 'text' | 'formula' | 'fragments' | 'image' | 'line' | 'video' | 'audio'
   data: any
 }
 
@@ -60,8 +60,8 @@ function convertElementToGroupChild(element: Element): ConvertedGroupChild | nul
       return { type: 'shape', data: converted }
     }
     case 'text': {
-      const converted = convertText(element as TextElement)
-      return { type: 'text', data: converted }
+      const converted = convertTextOrFormula(element as TextElement)
+      return { type: converted.type as any, data: converted }
     }
     case 'image': {
       const converted = convertImage(element as ImageElement)
@@ -107,8 +107,9 @@ function flattenWithOffset(
   convertElementFn?: (element: Element) => any
 ): ConvertedGroupChild[] {
   const results: ConvertedGroupChild[] = []
+  const sortedChildren = [...group.children].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
 
-  for (const child of group.children) {
+  for (const child of sortedChildren) {
     if (child.type === 'group') {
       const childGroup = child as GroupElement
       results.push(...flattenWithOffset(childGroup, offsetX, offsetY, convertElementFn))

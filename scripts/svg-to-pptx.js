@@ -19,12 +19,13 @@
 const fs = require('fs');
 const path = require('path');
 
-const projectRoot = path.resolve(__dirname, '..');
+const cwdRoot = process.cwd();
+const scriptRoot = path.resolve(__dirname, '..');
+const projectRoot = fs.existsSync(path.join(cwdRoot, 'dist')) ? cwdRoot : scriptRoot;
 const distPath = path.join(projectRoot, 'dist');
 
 // Import converters
 const { svgToSif } = require(path.join(distPath, 'svg', 'converter'));
-const { createDocument, createSlide } = require(path.join(distPath, 'sif', 'index'));
 const { PptxGenerator } = require(path.join(distPath, 'pptx', 'generator'));
 
 // Parse command line arguments
@@ -97,14 +98,20 @@ async function svgToPptx(svgContent, options = {}) {
   const height = parseFloat(svgRoot?.['@_height']) || 540;
 
   // Step 3: Create SIF document with one slide
-  const slide = createSlide('slide1');
-  slide.elements = elements;
+  const slide = {
+    id: 'slide1',
+    elements
+  };
 
-  const document = createDocument(width, height);
-  document.slides = [slide];
-  document.meta = {
+  const document = {
+    version: '1.0.0',
+    width,
+    height,
+    slides: [slide],
+    meta: {
     title: options.title || 'SVG Conversion',
     author: options.author || 'SVG-PPTX Engine'
+    }
   };
 
   // Step 4: Generate PPTX

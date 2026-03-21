@@ -10,6 +10,7 @@ import PptxGenJS from 'pptxgenjs'
 import type { LineElement, ArrowMarker } from '../../sif/types/elements/line'
 import type { Stroke } from '../../sif/types/style/stroke'
 import { hexToPptxColorWithAlpha, opacityToTransparency, dashArrayToDashType, pxToInch, pxToPt, arrowTypeToPptx } from '../utils'
+import { convertPathPointsForPptx } from '../utils/path-to-pptx'
 
 /**
  * Convert line element to pptxgenjs shape (line)
@@ -82,13 +83,22 @@ export function convertLine(
     lineOptions.beginArrowType = arrowTypeToPptx(line.markerStart) ?? 'arrow'
   }
 
+  const localX1 = x1 - minX
+  const localY1 = y1 - minY
+  const localX2 = x2 - minX
+  const localY2 = y2 - minY
+
   const options: PptxGenJS.ShapeProps = {
     x: pxToInch(minX),
     y: pxToInch(minY),
     w: pxToInch(width),
     h: pxToInch(height),
     fill: { type: 'none' },
-    line: lineOptions
+    line: lineOptions,
+    points: convertPathPointsForPptx([
+      { x: localX1, y: localY1, type: 'M', moveTo: true } as any,
+      { x: localX2, y: localY2, type: 'L' } as any
+    ]) as any
   }
 
   if (hyperlink) {
@@ -102,7 +112,7 @@ export function convertLine(
   }
 
   return {
-    shapeName: 'line' as PptxGenJS.SHAPE_NAME,
+    shapeName: 'custGeom' as PptxGenJS.SHAPE_NAME,
     options
   }
 }

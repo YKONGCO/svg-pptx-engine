@@ -13,6 +13,7 @@ import {
   textAlignToPptx,
   verticalAlignToPptx
 } from '../utils'
+import { convertMixedTextToFragments, convertTextToFormula, type ConvertedFormula } from '../utils/formula'
 
 /**
  * Convert text fill to pptxgenjs color
@@ -37,9 +38,17 @@ export function convertTextFill(fill: Fill): string {
  * Text conversion result
  */
 export interface ConvertedText {
+  type: 'text'
   text: string | PptxGenJS.TextProps[]
   options: PptxGenJS.TextPropsOptions
 }
+
+export type ConvertedTextLike = ConvertedText | ConvertedFormula
+export interface ConvertedTextFragments {
+  type: 'fragments'
+  items: ConvertedTextLike[]
+}
+export type ConvertedTextOutput = ConvertedTextLike | ConvertedTextFragments
 
 function convertTextRun(text: TextElement, run: RichTextElement['runs'][number]): PptxGenJS.TextProps {
   const options: PptxGenJS.TextPropsOptions = {
@@ -167,9 +176,31 @@ export function convertText(text: TextElement, hyperlink?: PptxGenJS.HyperlinkPr
     : text.text
 
   return {
+    type: 'text',
     text: content,
     options: textOptions
   }
+}
+
+export function convertTextOrFormula(
+  text: TextElement,
+  hyperlink?: PptxGenJS.HyperlinkProps
+): ConvertedTextOutput {
+  if (hyperlink) {
+    return convertText(text, hyperlink)
+  }
+
+  const wholeFormula = convertTextToFormula(text)
+  if (wholeFormula) {
+    return wholeFormula
+  }
+
+  const fragments = convertMixedTextToFragments(text)
+  if (fragments) {
+    return { type: 'fragments', items: fragments }
+  }
+
+  return convertText(text, hyperlink)
 }
 
 /**
@@ -196,6 +227,7 @@ export function convertRichText(text: RichTextElement): ConvertedText[] {
     }
 
     results.push({
+      type: 'text',
       text: run.text,
       options: runOptions
     })

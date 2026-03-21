@@ -350,8 +350,8 @@ describe('SVG to SIF Converter', () => {
       const text = elements[0] as any
 
       expect(text.type).toBe('text')
-      expect(text.x).toBeCloseTo(70, 0)
-      expect(text.width).toBeCloseTo(60, 0)
+      expect(text.x).toBeCloseTo(55.2, 1)
+      expect(text.width).toBeCloseTo(89.6, 1)
     })
 
     it('should convert dominant-baseline middle to text box top edge', () => {
@@ -363,8 +363,8 @@ describe('SVG to SIF Converter', () => {
       const text = elements[0] as any
 
       expect(text.type).toBe('text')
-      expect(text.y).toBeCloseTo(38, 0)
-      expect(text.height).toBeCloseTo(24, 0)
+      expect(text.y).toBeCloseTo(35.5, 1)
+      expect(text.height).toBeCloseTo(29, 1)
     })
 
     it('should handle text with tspans', () => {
@@ -666,6 +666,41 @@ describe('SVG to SIF Converter', () => {
       expect(elements.length).toBe(1)
       // Transform should be merged into coordinates or kept as transform
       expect((elements[0] as any).x).toBeDefined()
+    })
+
+    it('should compute path bounds from transformed path points instead of raw numeric tokens', () => {
+      const svg = `<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
+        <g transform="translate(420, 400)">
+          <path d="M 0,0 L 0,-200 A 200,200 0 0,1 173.2,100 Z" fill="#2196F3" />
+        </g>
+      </svg>`
+
+      const elements = svgToSif(svg, { preserveGroups: false })
+      const path = elements[0] as any
+
+      expect(path.type).toBe('shape')
+      expect(path.shapeType).toBe('path')
+      expect(path.x).toBeCloseTo(420, 2)
+      expect(path.y).toBeCloseTo(200, 2)
+      expect(path.width).toBeGreaterThan(170)
+      expect(path.height).toBeGreaterThan(290)
+      expect(path.points?.[0]?.x).toBeCloseTo(420, 2)
+      expect(path.points?.[0]?.y).toBeCloseTo(400, 2)
+    })
+
+    it('should give stroke-only path a non-zero bounding box', () => {
+      const svg = `<svg viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 200 175 C 380 175 380 175 560 175" fill="none" stroke="#2196F3" stroke-width="56" />
+      </svg>`
+
+      const elements = svgToSif(svg)
+      const path = elements[0] as any
+
+      expect(path.type).toBe('shape')
+      expect(path.shapeType).toBe('path')
+      expect(path.height).toBeGreaterThan(0)
+      expect(path.y).toBeLessThan(175)
+      expect(path.width).toBeGreaterThan(360)
     })
   })
 

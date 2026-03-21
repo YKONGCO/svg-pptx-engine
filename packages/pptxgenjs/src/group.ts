@@ -1,5 +1,5 @@
 import { CHART_NAME, SHAPE_NAME, SLIDE_OBJECT_TYPES } from './core-enums'
-import { IChartMulti, IChartOpts, IChartOptsLib, ImageProps, ISlideObject, MediaProps, PresSlide, ShapeProps, TableProps, TableRow, TextProps, TextPropsOptions } from './core-interfaces'
+import { FormulaProps, IChartMulti, IChartOpts, IChartOptsLib, ImageProps, ISlideObject, MediaProps, PresSlide, ShapeProps, TableProps, TableRow, TextProps, TextPropsOptions } from './core-interfaces'
 import * as genObj from './gen-objects'
 
 export class Group {
@@ -84,6 +84,15 @@ export class Group {
 	addText(text: string | TextProps[], options?: TextPropsOptions): Group {
 		const textParam = typeof text === 'string' || typeof text === 'number' ? [{ text, options }] : text
 		genObj.addTextDefinition(this, this._slide, textParam, options, false)
+		return this
+	}
+
+	addFormula(options: FormulaProps): Group {
+		genObj.addFormulaDefinition(this._slide, options)
+		const formulaObject = this._slide._slideObjects.pop()
+		if (formulaObject) {
+			this._slideObjects.push(formulaObject)
+		}
 		return this
 	}
 }

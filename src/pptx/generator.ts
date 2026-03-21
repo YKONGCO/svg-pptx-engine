@@ -6,7 +6,7 @@ import type { Element, ShapeElement, TextElement, ImageElement, LineElement, Gro
 import type { Fill, SolidFill, GradientFill } from '../sif/types/style/fill'
 import { getElementsInRenderOrder } from './converters/slide'
 import { convertShape } from './converters/shape'
-import { convertText } from './converters/text'
+import { convertTextOrFormula } from './converters/text'
 import { convertImage } from './converters/image'
 import { convertLine } from './converters/line'
 import { convertGroupElements } from './converters/slide'
@@ -142,8 +142,18 @@ export class PptxGenerator {
   private addElementToGroup(group: PptxGenJS.Group, converted: { type: string; data: any }): void {
     const { type, data } = converted
 
-    if (type === 'text') {
+    if (type === 'fragments') {
+      for (const item of data.items) {
+        this.addElementToGroup(group, { type: item.type, data: item })
+      }
+    } else if (type === 'text') {
       group.addText(data.text, data.options)
+    } else if (type === 'formula') {
+      if (typeof (group as any).addFormula === 'function') {
+        ;(group as any).addFormula(data.options)
+      } else {
+        this.pushFormulaObject(group as any, data.options)
+      }
     } else if (type === 'image') {
       group.addImage(data)
     } else if (type === 'shape' || type === 'line') {
@@ -169,8 +179,10 @@ export class PptxGenerator {
     switch (element.type) {
       case 'shape':
         return { type: 'shape', data: convertShape(element as ShapeElement, hyperlink) }
-      case 'text':
-        return { type: 'text', data: convertText(element as TextElement, hyperlink) }
+      case 'text': {
+        const convertedText = convertTextOrFormula(element as TextElement, hyperlink)
+        return { type: convertedText.type, data: convertedText }
+      }
       case 'image':
         return { type: 'image', data: convertImage(element as ImageElement, hyperlink) }
       case 'line':
@@ -187,8 +199,18 @@ export class PptxGenerator {
   private addConvertedElement(slide: PptxGenJS.Slide, converted: { type: string; data: any }): void {
     const { type, data } = converted
 
-    if (type === 'text') {
+    if (type === 'fragments') {
+      for (const item of data.items) {
+        this.addConvertedElement(slide, { type: item.type, data: item })
+      }
+    } else if (type === 'text') {
       slide.addText(data.text, data.options)
+    } else if (type === 'formula') {
+      if (typeof (slide as any).addFormula === 'function') {
+        ;(slide as any).addFormula(data.options)
+      } else {
+        this.pushFormulaObject(slide as any, data.options)
+      }
     } else if (type === 'video') {
       slide.addMedia(data)
     } else if (type === 'audio') {
@@ -213,6 +235,33 @@ export class PptxGenerator {
     }
 
     return convertHyperlink(element.hyperlink)
+  }
+
+  private pushFormulaObject(container: any, options: any): void {
+    const target = container?._slideObjects
+      ? container
+      : container?._slide?._slideObjects
+        ? container._slide
+        : (this.pptx as any)?._slides?.[(this.pptx as any)?._slides?.length - 1]
+
+    if (!target?._slideObjects) {
+      throw new Error('Unable to resolve formula target container')
+    }
+
+    target._slideObjects.push({
+      _type: 'formula',
+      options: {
+        x: options.x || 0,
+        y: options.y || 0,
+        w: options.w,
+        h: options.h,
+        objectName: options.objectName || 'Formula',
+        fontSize: options.fontSize,
+        color: options.color
+      },
+      formula: options.omml,
+      formulaAlign: options.align || 'center'
+    })
   }
 
   async writeFile(options?: { fileName?: string }): Promise<string> {

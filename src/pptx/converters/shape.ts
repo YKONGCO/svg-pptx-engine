@@ -8,14 +8,26 @@
 // - PPTX shape coordinates are in inches
 
 import PptxGenJS from 'pptxgenjs'
-import type { ShapeElement, ShapeType, CircleShape, EllipseShape, RectShape, LineShape, PathShape } from '../../sif/types/elements/shape'
+import type {
+  ShapeElement,
+  ShapeType,
+  CircleShape,
+  EllipseShape,
+  RectShape,
+  LineShape,
+  PathShape,
+  PolygonShape,
+  PolylineShape,
+  PathPoint
+} from '../../sif/types/elements/shape'
 import type { Fill, SolidFill, GradientFill } from '../../sif/types/style/fill'
 import type { Gradient, LinearGradient } from '../../sif/types/style/gradient'
 import type { Stroke } from '../../sif/types/style/stroke'
 import type { VisualEffect } from '../../sif/types/style/effect'
 import type { Transform } from '../../sif/types/common'
 import { hexToPptxColorWithAlpha, opacityToTransparency, dashArrayToDashType, pxToInch, pxToPt } from '../utils'
-import { pathRequiresCustomGeometry, convertPathPointsForPptx, type PptxPathPoint } from '../utils/path-to-pptx'
+import { convertPathPointsForPptx } from '../utils/path-to-pptx'
+import { parsePathToPoints } from '../../svg/utils/path-parser'
 
 /**
  * Shape conversion result - contains shape name and options
@@ -23,6 +35,132 @@ import { pathRequiresCustomGeometry, convertPathPointsForPptx, type PptxPathPoin
 export interface ConvertedShape {
   shapeName: PptxGenJS.SHAPE_NAME
   options: PptxGenJS.ShapeProps
+}
+
+function combineTransparency(baseTransparency?: number, extraOpacity?: number): number | undefined {
+  if (baseTransparency === undefined && extraOpacity === undefined) return undefined
+
+  const base = (baseTransparency ?? 0) / 100
+  const extra = extraOpacity === undefined ? 0 : (1 - extraOpacity)
+  return Math.min(100, Math.round((1 - (1 - base) * (1 - extra)) * 100))
+}
+
+function normalizeGradientStopPosition(offset?: number): number {
+  if (offset === undefined) return 0
+  return offset > 1 ? offset : offset * 100
+}
+
+function resolveLinearGradientAngle(gradient: LinearGradient): number | undefined {
+  if (
+    gradient.x1 !== undefined &&
+    gradient.y1 !== undefined &&
+    gradient.x2 !== undefined &&
+    gradient.y2 !== undefined
+  ) {
+    const dx = gradient.x2 - gradient.x1
+    const dy = gradient.y2 - gradient.y1
+    const degrees = Math.atan2(dy, dx) * (180 / Math.PI)
+    return (degrees + 360) % 360
+  }
+
+  return gradient.angle
+}
+
+function parsePointString(points: string): Array<{ x: number; y: number }> {
+  return points
+    .trim()
+    .split(/\s+/)
+    .map(pair => pair.split(','))
+    .filter(parts => parts.length >= 2)
+    .map(([x, y]) => ({ x: Number(x), y: Number(y) }))
+    .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
+}
+
+function pointsStringToPathPoints(shape: PolygonShape | PolylineShape): PathPoint[] {
+  const parsed = parsePointString(shape.points)
+  if (parsed.length === 0) return []
+
+  const pathPoints: PathPoint[] = parsed.map((point, index) => ({
+    x: point.x,
+    y: point.y,
+    type: index === 0 ? 'M' : 'L',
+    ...(index === 0 ? { moveTo: true } : {})
+  })) as PathPoint[]
+
+  if (shape.shapeType === 'polygon') {
+    pathPoints.push({ close: true, type: 'Z' })
+  }
+
+  return pathPoints
+}
+
+function normalizePathPointsToLocal(points: PathPoint[], offsetX: number, offsetY: number): PathPoint[] {
+  return points.map(point => {
+    if ('close' in point) {
+      return point
+    }
+
+    if ('curve' in point) {
+      if (point.curve.type === 'cubic') {
+        return {
+          ...point,
+          x: point.x - offsetX,
+          y: point.y - offsetY,
+          curve: {
+            ...point.curve,
+            x1: point.curve.x1 - offsetX,
+            y1: point.curve.y1 - offsetY,
+            x2: point.curve.x2 - offsetX,
+            y2: point.curve.y2 - offsetY
+          }
+        }
+      }
+
+      if (point.curve.type === 'quadratic') {
+        return {
+          ...point,
+          x: point.x - offsetX,
+          y: point.y - offsetY,
+          curve: {
+            ...point.curve,
+            x1: point.curve.x1 - offsetX,
+            y1: point.curve.y1 - offsetY
+          }
+        }
+      }
+
+      return {
+        ...point,
+        x: point.x - offsetX,
+        y: point.y - offsetY
+      }
+    }
+
+    return {
+      ...point,
+      x: point.x - offsetX,
+      y: point.y - offsetY
+    }
+  }) as PathPoint[]
+}
+
+function getCustomGeometryPoints(shape: ShapeElement): PathPoint[] {
+  if (shape.shapeType === 'path') {
+    const pathShape = shape as PathShape
+    if (pathShape.points && pathShape.points.length > 0) {
+      return pathShape.points
+    }
+    if (pathShape.d) {
+      return parsePathToPoints(pathShape.d)
+    }
+    return []
+  }
+
+  if (shape.shapeType === 'polygon' || shape.shapeType === 'polyline') {
+    return pointsStringToPathPoints(shape as PolygonShape | PolylineShape)
+  }
+
+  return []
 }
 
 /**
@@ -49,14 +187,10 @@ export function convertFill(fill: Fill): PptxGenJS.ShapeFillProps {
 
     const stops = gradient.stops.map(stop => {
       const { color, transparency } = hexToPptxColorWithAlpha(stop.color)
-      const offsetValue = stop.offset ?? (stop as any).position
-      const position = offsetValue !== undefined
-        ? (offsetValue > 1 ? offsetValue : offsetValue * 100)
-        : 0
       return {
-        position,
+        position: normalizeGradientStopPosition(stop.offset),
         color,
-        transparency: transparency ?? opacityToTransparency(stop.opacity)
+        transparency: combineTransparency(transparency, stop.opacity)
       }
     })
 
@@ -66,11 +200,14 @@ export function convertFill(fill: Fill): PptxGenJS.ShapeFillProps {
       return {
         type: 'solid',
         color,
-        transparency: transparency ?? opacityToTransparency(fallbackStop.opacity) ?? opacityToTransparency(gradientFill.opacity) ?? 0
+        transparency: combineTransparency(
+          combineTransparency(transparency, fallbackStop.opacity),
+          gradientFill.opacity
+        ) ?? 0
       }
     }
 
-    const angle = (gradient as LinearGradient).angle
+    const angle = resolveLinearGradientAngle(gradient as LinearGradient)
 
     return {
       type: 'linearGradient',
@@ -171,10 +308,10 @@ function getShapeName(shapeType: string): PptxGenJS.SHAPE_NAME {
     rect: 'rect',
     circle: 'ellipse',
     ellipse: 'ellipse',
-    path: 'rect',
+    path: 'custGeom',
     line: 'line',
-    polygon: 'pentagon',
-    polyline: 'pentagon'
+    polygon: 'custGeom',
+    polyline: 'custGeom'
   }
   return (mapping[shapeType] || 'rect') as PptxGenJS.SHAPE_NAME
 }
@@ -260,19 +397,39 @@ export function convertShape(shape: ShapeElement, hyperlink?: PptxGenJS.Hyperlin
     }
     case 'line': {
       const line = shape as any
-      options.x = pxToInch(Math.min(line.x1, line.x2) + translateX)
-      options.y = pxToInch(Math.min(line.y1, line.y2) + translateY)
-      options.w = pxToInch((Math.abs(line.x2 - line.x1) || 1) * scaleX)
-      options.h = pxToInch((Math.abs(line.y2 - line.y1) || 1) * scaleY)
+      const x1 = (line.x1 + translateX) * scaleX
+      const y1 = (line.y1 + translateY) * scaleY
+      const x2 = (line.x2 + translateX) * scaleX
+      const y2 = (line.y2 + translateY) * scaleY
+
+      const minX = Math.min(x1, x2)
+      const minY = Math.min(y1, y2)
+      options.x = pxToInch(minX)
+      options.y = pxToInch(minY)
+      options.w = pxToInch(Math.abs(x2 - x1) || 1)
+      options.h = pxToInch(Math.abs(y2 - y1) || 1)
+      options.fill = { type: 'none' }
+      options.points = convertPathPointsForPptx([
+        { x: x1 - minX, y: y1 - minY, type: 'M', moveTo: true } as any,
+        { x: x2 - minX, y: y2 - minY, type: 'L' } as any
+      ]) as any
+      shapeName = 'custGeom' as any
       break
     }
     case 'path': {
-      const pathShape = shape as PathShape
-      if (pathShape.points && pathRequiresCustomGeometry(pathShape.points)) {
-        // Use CUSTOM_GEOMETRY for paths with curves/arcs
+      const localPoints = normalizePathPointsToLocal(getCustomGeometryPoints(shape), shape.x, shape.y)
+      if (localPoints.length > 0) {
         shapeName = 'custGeom' as any
-        const pptxPoints = convertPathPointsForPptx(pathShape.points)
-        options.points = pptxPoints as any
+        options.points = convertPathPointsForPptx(localPoints) as any
+      }
+      break
+    }
+    case 'polygon':
+    case 'polyline': {
+      const localPoints = normalizePathPointsToLocal(getCustomGeometryPoints(shape), shape.x, shape.y)
+      if (localPoints.length > 0) {
+        shapeName = 'custGeom' as any
+        options.points = convertPathPointsForPptx(localPoints) as any
       }
       break
     }

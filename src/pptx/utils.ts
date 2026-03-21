@@ -214,26 +214,34 @@ export function isValidHexColor(hex: string): boolean {
 export function dashArrayToDashType(dashArray?: string): DashTypeValue {
   if (!dashArray) return 'solid'
 
-  const parts = dashArray.split(',').map(p => parseFloat(p.trim()))
+  const parts = dashArray
+    .split(/[,\s]+/)
+    .map(p => parseFloat(p.trim()))
+    .filter(p => Number.isFinite(p) && p >= 0)
+
+  if (parts.length === 0) return 'solid'
 
   if (parts.length === 2) {
     const [dash, gap] = parts
-    if (dash === 0 && gap > 0) return 'sysDot'
-    if (dash === gap) {
-      if (dash === 5) return 'dash'
-      if (dash === 10) return 'lgDash'
+    if (dash <= 1 || gap >= dash * 2) return 'sysDot'
+    if (Math.abs(dash - gap) <= 1.5) {
+      return dash >= 7 ? 'lgDash' : 'dash'
     }
-    if (dash === 5 && gap === 2) return 'dashDot'
+    if (gap <= dash * 0.6) {
+      return dash >= 7 ? 'lgDash' : 'dash'
+    }
   }
 
   if (parts.length === 4) {
     const [a, b, c, d] = parts
-    if (a === 10 && b === 3 && c === 3 && d === 3) return 'lgDashDot'
+    if (c <= a * 0.6 && d <= b * 1.5) {
+      return a >= 7 ? 'lgDashDot' : 'dashDot'
+    }
   }
 
   if (parts.length === 6) {
-    const [a, b, c, d, e, f] = parts
-    if (a === 10 && b === 3 && c === 3 && d === 3 && e === 3 && f === 3) return 'lgDashDotDot'
+    const [a] = parts
+    return a >= 7 ? 'lgDashDotDot' : 'dashDot'
   }
 
   return 'solid'

@@ -797,6 +797,8 @@ function slideObjectToXml (slide: PresSlide | SlideLayout): string {
 							y: relY,
 							w: childW,
 							h: childH,
+							flipH: !!childObj.options?.flipH,
+							flipV: !!childObj.options?.flipV,
 						},
 					}
 				})

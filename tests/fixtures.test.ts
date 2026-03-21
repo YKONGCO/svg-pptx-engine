@@ -93,8 +93,9 @@ describe('Fixture-based Integration Tests', () => {
       expect(line.type).toBe('line')
 
       const result = convertLine(line)
-      expect(result.shapeName).toBe('line')
+      expect(result.shapeName).toBe('custGeom')
       expect(result.options.line).toBeDefined()
+      expect(result.options.points).toBeDefined()
       expect(result.options.line!.color).toBe('4285F4')
     })
   })
@@ -119,9 +120,10 @@ describe('Fixture-based Integration Tests', () => {
       expect(sector).toBeDefined()
       expect(sector.shapeType).toBe('path')
 
-      // Path shapes are converted to rect as fallback (pptxgenjs doesn't support path)
+      // Path shapes now use CUSTOM_GEOMETRY via the local pptxgenjs custGeom support
       const result = convertShape(sector)
-      expect(result.shapeName).toBe('rect') // Fallback
+      expect(result.shapeName).toBe('custGeom')
+      expect(result.options.points).toBeDefined()
     })
 
     it('should convert legend items with gradient fills', () => {

@@ -13,7 +13,7 @@ import type { GroupElement } from '../../sif/types/elements/group'
 import type { VideoElement } from '../../sif/types/elements/video'
 import type { AudioElement } from '../../sif/types/elements/audio'
 import { convertShape } from './shape'
-import { convertText } from './text'
+import { convertTextOrFormula } from './text'
 import { convertImage } from './image'
 import { convertLine } from './line'
 import { convertGroup, type ConvertedGroupChild } from './group'
@@ -61,7 +61,7 @@ export function getElementsInRenderOrder(elements: Element[]): Element[] {
  */
 export function convertElement(
   element: Element
-): { type: 'shape' | 'text' | 'image' | 'line' | 'video' | 'audio'; data: any } | null {
+): { type: 'shape' | 'text' | 'formula' | 'fragments' | 'image' | 'line' | 'video' | 'audio'; data: any } | null {
   if (element.visible === false) {
     return null
   }
@@ -72,8 +72,8 @@ export function convertElement(
       return { type: 'shape', data: converted }
     }
     case 'text': {
-      const converted = convertText(element as TextElement)
-      return { type: 'text', data: converted }
+      const converted = convertTextOrFormula(element as TextElement)
+      return { type: converted.type as any, data: converted }
     }
     case 'image': {
       const converted = convertImage(element as ImageElement)

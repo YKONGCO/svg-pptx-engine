@@ -1,5 +1,8 @@
 // PPTX path converter - converts PathPoint[] to pptxgenjs CUSTOM_GEOMETRY points format
 import type { PathPoint, CurvePoint, ArcPoint, ArcCurve } from '../../sif/types/elements/shape'
+import { pxToInch } from '../utils'
+
+const EMU_PER_INCH = 914400
 
 /**
  * Check if path contains any curves or arcs that require CUSTOM_GEOMETRY
@@ -96,6 +99,10 @@ export type PptxPathPoint =
   | { x: number; y: number; curve: { type: 'quadratic'; x1: number; y1: number } }
   | { close: true }
 
+function pxToEmu(value: number): number {
+  return Math.round(pxToInch(value) * EMU_PER_INCH)
+}
+
 /**
  * Convert PathPoint[] to pptxgenjs points format
  */
@@ -123,10 +130,62 @@ export function convertPathPointsForPptx(points: PathPoint[]): PptxPathPoint[] {
       }
     }
 
-    result.push(convertPathPointToPptx(point, actualPrev))
+    const converted = convertPathPointToPptx(point, actualPrev)
+    result.push(convertPptxPathPointToInches(converted))
   }
 
   return result
+}
+
+function convertPptxPathPointToInches(point: PptxPathPoint): PptxPathPoint {
+  if ('close' in point) {
+    return point
+  }
+
+  if ('curve' in point) {
+    switch (point.curve.type) {
+      case 'arc':
+        return {
+          x: pxToEmu(point.x),
+          y: pxToEmu(point.y),
+          curve: {
+            ...point.curve,
+            hR: pxToEmu(point.curve.hR),
+            wR: pxToEmu(point.curve.wR)
+          }
+        }
+      case 'cubic':
+        return {
+          x: pxToEmu(point.x),
+          y: pxToEmu(point.y),
+          curve: {
+            ...point.curve,
+            x1: pxToEmu(point.curve.x1),
+            y1: pxToEmu(point.curve.y1),
+            x2: pxToEmu(point.curve.x2),
+            y2: pxToEmu(point.curve.y2)
+          }
+        }
+      case 'quadratic':
+        return {
+          x: pxToEmu(point.x),
+          y: pxToEmu(point.y),
+          curve: {
+            ...point.curve,
+            x1: pxToEmu(point.curve.x1),
+            y1: pxToEmu(point.curve.y1)
+          }
+        }
+      default:
+        return point
+    }
+  }
+
+  return {
+    ...point,
+    x: pxToEmu(point.x),
+    y: pxToEmu(point.y)
+  }
 }
 
 /**
@@ -143,96 +202,79 @@ function convertSvgArcToPptxArc(
   largeArc: boolean,        // large arc flag
   sweep: boolean            // sweep flag
 ): { hR: number; wR: number; stAng: number; swAng: number } {
-  // Handle degenerate case where start and end are the same
-  if (Math.abs(x2 - x1) < 0.001 && Math.abs(y2 - y1) < 0.001) {
-    return { hR: rY, wR: rX, stAng: 0, swAng: 0 }
+  const arc = arcEndpointToCenter(x1, y1, x2, y2, rX, rY, xAxisRotation, largeArc, sweep)
+  if (!arc) {
+    return { hR: Math.abs(rY), wR: Math.abs(rX), stAng: 0, swAng: 0 }
   }
-
-  // Convert rotation to radians
-  const phi = (xAxisRotation * Math.PI) / 180
-
-  // Step 1: Compute center point of ellipse
-  // Using the midpoint and angle approach
-  const dx = x2 - x1
-  const dy = y2 - y1
-
-  // Distance between points
-  const d = Math.sqrt(dx * dx + dy * dy)
-
-  // Handle edge case where distance is 0
-  if (d < 0.001) {
-    return { hR: rY, wR: rX, stAng: 0, swAng: 0 }
-  }
-
-  // Normalize radii
-  const rXa = Math.abs(rX)
-  const rYa = Math.abs(rY)
-
-  // Ensure radii are large enough
-  const lambda = (rXa * rXa - rYa * rYa) / (rXa * rXa + rYa * rYa)
-  const scaleFactor = Math.min(1, Math.sqrt(1 + lambda * lambda))
-  const rXc = rXa / scaleFactor
-  const rYc = rYa / scaleFactor
-
-  // Compute angles
-  // The angle from center to start/end points depends on the ellipse orientation
-  const cosPhi = Math.cos(phi)
-  const sinPhi = Math.sin(phi)
-
-  // Angle of midpoint to center (in ellipse coordinates)
-  // Simplified calculation for the arc center
-  const minR = Math.min(rXa, rYa)
-  const maxR = Math.max(rXa, rYa)
-
-  // The center is along the perpendicular bisector of the segment
-  // Distance from midpoint to center
-  let distToCenter: number
-  if (rXa === 0 || rYa === 0) {
-    distToCenter = 0
-  } else {
-    const term1 = Math.pow(d / 2, 2) / Math.pow(rXa, 2)
-    const term2 = Math.pow(d / 2, 2) / Math.pow(rYa, 2)
-    distToCenter = Math.sqrt(Math.max(0, Math.pow(d / 2, 2) * (1 - term1 - term2) / (term1 + term2 - 1)))
-  }
-
-  // For a non-rotated ellipse, the center would be at midpoint
-  // The actual center depends on largeArc and sweep flags
-  const midX = (x1 + x2) / 2
-  const midY = (y1 + y2) / 2
-
-  // Compute start angle (angle from center to start point)
-  // Adjusted for ellipse rotation
-  let startAngle = Math.atan2(y1 - midY, x1 - midX) - phi
-
-  // Compute end angle (angle from center to end point)
-  let endAngle = Math.atan2(y2 - midY, x2 - midX) - phi
-
-  // Compute sweep angle
-  let sweepAngle = endAngle - startAngle
-
-  // Normalize sweep angle based on largeArc flag
-  if (largeArc) {
-    if (sweepAngle > 0) {
-      sweepAngle -= 2 * Math.PI
-    } else {
-      sweepAngle += 2 * Math.PI
-    }
-  }
-
-  // Adjust sweep direction based on sweep flag
-  if (!sweep) {
-    sweepAngle = -sweepAngle
-    startAngle = endAngle
-  }
-
-  // Convert angles to degrees for PPTX
-  const stAng = (startAngle * 180) / Math.PI
-  const swAng = (sweepAngle * 180) / Math.PI
 
   return {
-    hR: rYc,
-    wR: rXc,
-    stAng,
-    swAng
+    hR: arc.ry,
+    wR: arc.rx,
+    stAng: radiansToDegrees(arc.theta1),
+    swAng: radiansToDegrees(arc.deltaTheta)
   }
+}
+
+function arcEndpointToCenter(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  rxInput: number,
+  ryInput: number,
+  rotation: number,
+  largeArc: boolean,
+  sweep: boolean
+): { rx: number; ry: number; theta1: number; deltaTheta: number } | null {
+  let rx = Math.abs(rxInput)
+  let ry = Math.abs(ryInput)
+  if (rx === 0 || ry === 0) return null
+
+  const phi = (rotation * Math.PI) / 180
+  const cosPhi = Math.cos(phi)
+  const sinPhi = Math.sin(phi)
+  const dx2 = (x1 - x2) / 2
+  const dy2 = (y1 - y2) / 2
+
+  const x1p = cosPhi * dx2 + sinPhi * dy2
+  const y1p = -sinPhi * dx2 + cosPhi * dy2
+
+  const lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry)
+  if (lambda > 1) {
+    const scale = Math.sqrt(lambda)
+    rx *= scale
+    ry *= scale
+  }
+
+  const sign = largeArc === sweep ? -1 : 1
+  const numerator = Math.max(0, rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p)
+  const denominator = rx * rx * y1p * y1p + ry * ry * x1p * x1p
+  const coef = denominator === 0 ? 0 : sign * Math.sqrt(numerator / denominator)
+  const cxp = coef * ((rx * y1p) / ry)
+  const cyp = coef * (-(ry * x1p) / rx)
+
+  const theta1 = angleBetween(
+    { x: 1, y: 0 },
+    { x: (x1p - cxp) / rx, y: (y1p - cyp) / ry }
+  )
+  let deltaTheta = angleBetween(
+    { x: (x1p - cxp) / rx, y: (y1p - cyp) / ry },
+    { x: (-x1p - cxp) / rx, y: (-y1p - cyp) / ry }
+  )
+
+  if (!sweep && deltaTheta > 0) {
+    deltaTheta -= 2 * Math.PI
+  } else if (sweep && deltaTheta < 0) {
+    deltaTheta += 2 * Math.PI
+  }
+
+  return { rx, ry, theta1, deltaTheta }
+}
+
+function angleBetween(u: { x: number; y: number }, v: { x: number; y: number }): number {
+  return Math.atan2(u.x * v.y - u.y * v.x, u.x * v.x + u.y * v.y)
+}
+
+function radiansToDegrees(value: number): number {
+  return (value * 180) / Math.PI
 }

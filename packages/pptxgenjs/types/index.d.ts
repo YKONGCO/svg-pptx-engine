@@ -2820,5 +2820,6 @@ declare namespace PptxGenJS {
 		 * @return {Group} this Group
 		 */
 		addText(text: string | TextProps[], options?: TextPropsOptions): Group
+		addFormula(options: FormulaProps): Group
 	}
 }

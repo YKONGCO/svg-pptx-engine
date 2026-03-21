@@ -9,9 +9,10 @@ describe('Line Converter', () => {
       const line = createMockLineElement()
       const result = convertLine(line)
 
-      expect(result.shapeName).toBe('line')
+      expect(result.shapeName).toBe('custGeom')
       expect(result.options.x).toBeCloseTo(1.0417, 2)
       expect(result.options.y).toBeCloseTo(1.0417, 2)
+      expect(result.options.points).toBeDefined()
     })
 
     it('should convert line with stroke', () => {
@@ -20,6 +21,20 @@ describe('Line Converter', () => {
 
       expect(result.options.line).toBeDefined()
       expect(result.options.line?.color).toBe('FF00FF')
+    })
+
+    it('should convert scatter-style dash arrays to dashed ppt lines', () => {
+      const line = createMockLineElement({
+        stroke: {
+          type: 'solid',
+          color: '2196F3',
+          width: 2,
+          dashArray: '8,4'
+        }
+      })
+      const result = convertLine(line)
+
+      expect(result.options.line?.dashType).toBe('lgDash')
     })
   })
 

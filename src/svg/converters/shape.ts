@@ -7,7 +7,8 @@ import type {
   LineShape,
   PolygonShape,
   PolylineShape,
-  ShapeElement
+  ShapeElement,
+  PathPoint
 } from '../../sif/types/elements/shape'
 import type { LineElement } from '../../sif/types/elements/line'
 import type { Fill, Stroke } from '../../sif/types/style'
@@ -187,9 +188,9 @@ export function convertPath(element: Record<string, unknown>, id: string, option
   const matrix = resolveMatrix(element, options)
   const d = transformPathData(sourcePath, matrix)
   const fillRule = (getAttr(element, 'fill-rule') || getAttr(element, 'fillRule') || 'nonzero') as 'nonzero' | 'evenodd'
-  const bounds = computePathBounds(d)
-  // Parse path data into structured points for CUSTOM_GEOMETRY support
   const points = parsePathToPoints(d)
+  const strokeWidth = getNumberAttr(element, 'stroke-width', 0)
+  const bounds = computePathBounds(points, strokeWidth)
 
   return withBaseProps({
     id,
@@ -392,9 +393,8 @@ function getOptionalNumberAttr(element: Record<string, unknown>, name: string): 
   return Number.isNaN(parsed) ? undefined : parsed
 }
 
-function computePathBounds(d: string): { x: number; y: number; width: number; height: number } {
-  const coords = Array.from(d.matchAll(/[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi)).map(match => parseFloat(match[0]))
-  if (coords.length < 2) {
+function computePathBounds(points: PathPoint[], strokeWidth: number = 0): { x: number; y: number; width: number; height: number } {
+  if (points.length === 0) {
     return { x: 0, y: 0, width: 0, height: 0 }
   }
 
@@ -403,19 +403,188 @@ function computePathBounds(d: string): { x: number; y: number; width: number; he
   let minY = Number.POSITIVE_INFINITY
   let maxY = Number.NEGATIVE_INFINITY
 
-  for (let i = 0; i + 1 < coords.length; i += 2) {
-    minX = Math.min(minX, coords[i])
-    maxX = Math.max(maxX, coords[i])
-    minY = Math.min(minY, coords[i + 1])
-    maxY = Math.max(maxY, coords[i + 1])
+  const includePoint = (x: number, y: number): void => {
+    minX = Math.min(minX, x)
+    maxX = Math.max(maxX, x)
+    minY = Math.min(minY, y)
+    maxY = Math.max(maxY, y)
   }
+
+  let previousPoint: { x: number; y: number } | undefined
+
+  for (const point of points) {
+    if ('close' in point) continue
+
+    includePoint(point.x, point.y)
+
+    if ('curve' in point) {
+      switch (point.curve.type) {
+        case 'cubic':
+          includePoint(point.curve.x1, point.curve.y1)
+          includePoint(point.curve.x2, point.curve.y2)
+          break
+        case 'quadratic':
+          includePoint(point.curve.x1, point.curve.y1)
+          break
+        case 'arc':
+          if (previousPoint) {
+            const arcBounds = computeArcSegmentBounds(previousPoint, point as Extract<PathPoint, { curve: { type: 'arc' } }>)
+            includePoint(arcBounds.minX, arcBounds.minY)
+            includePoint(arcBounds.maxX, arcBounds.maxY)
+          }
+          break
+        default:
+          break
+      }
+    }
+
+    previousPoint = { x: point.x, y: point.y }
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+    return { x: 0, y: 0, width: 0, height: 0 }
+  }
+
+  const padding = strokeWidth > 0 ? strokeWidth / 2 : 0
+  minX -= padding
+  minY -= padding
+  maxX += padding
+  maxY += padding
 
   return {
     x: minX,
     y: minY,
-    width: maxX - minX,
-    height: maxY - minY
+    width: Math.max(maxX - minX, strokeWidth > 0 ? strokeWidth : 1),
+    height: Math.max(maxY - minY, strokeWidth > 0 ? strokeWidth : 1)
   }
+}
+
+function computeArcSegmentBounds(
+  start: { x: number; y: number },
+  point: Extract<PathPoint, { curve: { type: 'arc' } }>
+): { minX: number; minY: number; maxX: number; maxY: number } {
+  const samples = sampleSvgArc(start, point, 24)
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+
+  for (const sample of samples) {
+    minX = Math.min(minX, sample.x)
+    minY = Math.min(minY, sample.y)
+    maxX = Math.max(maxX, sample.x)
+    maxY = Math.max(maxY, sample.y)
+  }
+
+  return {
+    minX: Number.isFinite(minX) ? minX : Math.min(start.x, point.x),
+    minY: Number.isFinite(minY) ? minY : Math.min(start.y, point.y),
+    maxX: Number.isFinite(maxX) ? maxX : Math.max(start.x, point.x),
+    maxY: Number.isFinite(maxY) ? maxY : Math.max(start.y, point.y)
+  }
+}
+
+function sampleSvgArc(
+  start: { x: number; y: number },
+  point: Extract<PathPoint, { curve: { type: 'arc' } }>,
+  steps: number
+): Array<{ x: number; y: number }> {
+  const arc = arcEndpointToCenter(
+    start.x,
+    start.y,
+    point.x,
+    point.y,
+    point.curve.rX,
+    point.curve.rY,
+    point.curve.rotation,
+    point.curve.largeArc,
+    point.curve.sweep
+  )
+
+  if (!arc) {
+    return [start, { x: point.x, y: point.y }]
+  }
+
+  const { cx, cy, rx, ry, phi, theta1, deltaTheta } = arc
+  const samples: Array<{ x: number; y: number }> = []
+  const totalSteps = Math.max(2, steps)
+
+  for (let i = 0; i <= totalSteps; i++) {
+    const t = theta1 + (deltaTheta * i) / totalSteps
+    const cosPhi = Math.cos(phi)
+    const sinPhi = Math.sin(phi)
+    const x = cx + rx * Math.cos(t) * cosPhi - ry * Math.sin(t) * sinPhi
+    const y = cy + rx * Math.cos(t) * sinPhi + ry * Math.sin(t) * cosPhi
+    samples.push({ x, y })
+  }
+
+  return samples
+}
+
+function arcEndpointToCenter(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  rxInput: number,
+  ryInput: number,
+  rotation: number,
+  largeArc: boolean,
+  sweep: boolean
+): { cx: number; cy: number; rx: number; ry: number; phi: number; theta1: number; deltaTheta: number } | null {
+  let rx = Math.abs(rxInput)
+  let ry = Math.abs(ryInput)
+  if (rx === 0 || ry === 0) return null
+
+  const phi = (rotation * Math.PI) / 180
+  const cosPhi = Math.cos(phi)
+  const sinPhi = Math.sin(phi)
+  const dx2 = (x1 - x2) / 2
+  const dy2 = (y1 - y2) / 2
+
+  const x1p = cosPhi * dx2 + sinPhi * dy2
+  const y1p = -sinPhi * dx2 + cosPhi * dy2
+
+  let lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry)
+  if (lambda > 1) {
+    const scale = Math.sqrt(lambda)
+    rx *= scale
+    ry *= scale
+    lambda = 1
+  }
+
+  const sign = largeArc === sweep ? -1 : 1
+  const numerator = Math.max(0, rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p)
+  const denominator = rx * rx * y1p * y1p + ry * ry * x1p * x1p
+  const coef = denominator === 0 ? 0 : sign * Math.sqrt(numerator / denominator)
+  const cxp = coef * ((rx * y1p) / ry)
+  const cyp = coef * (-(ry * x1p) / rx)
+
+  const cx = cosPhi * cxp - sinPhi * cyp + (x1 + x2) / 2
+  const cy = sinPhi * cxp + cosPhi * cyp + (y1 + y2) / 2
+
+  const theta1 = angleBetween(
+    { x: 1, y: 0 },
+    { x: (x1p - cxp) / rx, y: (y1p - cyp) / ry }
+  )
+  let deltaTheta = angleBetween(
+    { x: (x1p - cxp) / rx, y: (y1p - cyp) / ry },
+    { x: (-x1p - cxp) / rx, y: (-y1p - cyp) / ry }
+  )
+
+  if (!sweep && deltaTheta > 0) {
+    deltaTheta -= 2 * Math.PI
+  } else if (sweep && deltaTheta < 0) {
+    deltaTheta += 2 * Math.PI
+  }
+
+  return { cx, cy, rx, ry, phi, theta1, deltaTheta }
+}
+
+function angleBetween(u: { x: number; y: number }, v: { x: number; y: number }): number {
+  const dot = u.x * v.x + u.y * v.y
+  const det = u.x * v.y - u.y * v.x
+  return Math.atan2(det, dot)
 }
 
 function computePointsBounds(points: string): { x: number; y: number; width: number; height: number } {

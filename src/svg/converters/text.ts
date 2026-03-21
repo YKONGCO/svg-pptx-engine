@@ -258,11 +258,12 @@ function extractFill(
 
 function getTspanChildren(element: Record<string, unknown>): Record<string, unknown>[] {
   const value = element.tspan
-  if (!value) return []
+  if (value === undefined || value === null) return []
   if (Array.isArray(value)) {
     return value
       .map(item => {
         if (typeof item === 'string') return { '#text': item }
+        if (typeof item === 'number' || typeof item === 'boolean') return { '#text': String(item) }
         if (item && typeof item === 'object') return item as Record<string, unknown>
         return undefined
       })
@@ -273,6 +274,9 @@ function getTspanChildren(element: Record<string, unknown>): Record<string, unkn
   }
   if (typeof value === 'string') {
     return [{ '#text': value }]
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return [{ '#text': String(value) }]
   }
   return []
 }
@@ -348,11 +352,23 @@ function mapTextAlign(anchor: TextAnchor | undefined): 'left' | 'center' | 'righ
 }
 
 function estimateTextWidth(text: string, fontSize: number): number {
-  return text.length * fontSize * 0.6
+  let width = 0
+  for (const char of text) {
+    if (/\s/.test(char)) {
+      width += fontSize * 0.4
+    } else if (/[\u2E80-\u9FFF\uF900-\uFAFF]/.test(char)) {
+      width += fontSize * 1.28
+    } else if (/[A-Z0-9]/.test(char)) {
+      width += fontSize * 0.78
+    } else {
+      width += fontSize * 0.7
+    }
+  }
+  return Math.max(width + fontSize * 0.9, fontSize * 1.8)
 }
 
 function estimateTextHeight(fontSize: number): number {
-  return fontSize * 1.2
+  return fontSize * 1.45
 }
 
 function startsNewTextLine(tspan: Record<string, unknown>): boolean {

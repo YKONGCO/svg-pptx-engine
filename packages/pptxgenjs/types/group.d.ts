@@ -1,5 +1,5 @@
 import { CHART_NAME, SHAPE_NAME } from './core-enums';
-import { IChartMulti, IChartOpts, ImageProps, ISlideObject, MediaProps, PresSlide, ShapeProps, TableProps, TableRow, TextProps, TextPropsOptions } from './core-interfaces';
+import { FormulaProps, IChartMulti, IChartOpts, ImageProps, ISlideObject, MediaProps, PresSlide, ShapeProps, TableProps, TableRow, TextProps, TextPropsOptions } from './core-interfaces';
 export declare class Group {
     _slideObjects: ISlideObject[];
     _slide: PresSlide;
@@ -51,4 +51,5 @@ export declare class Group {
      * @return {Group} this Group
      */
     addText(text: string | TextProps[], options?: TextPropsOptions): Group;
+    addFormula(options: FormulaProps): Group;
 }
