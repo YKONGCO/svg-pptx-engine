@@ -264,12 +264,7 @@ export interface SolidShapeFillProps {
 // Backward compatibility alias
 export type ShapeFillProps = SolidShapeFillProps | LinearGradientShapeFillProps
 
-export interface ShapeLineProps extends SolidShapeFillProps {
-	/**
-	 * Fill type
-	 * @default 'solid'
-	 */
-	type?: 'none' | 'solid'
+interface ShapeLineStyleProps {
 	/**
 	 * Line width (pt)
 	 * @default 1
@@ -317,6 +312,7 @@ export interface ShapeLineProps extends SolidShapeFillProps {
 	 */
 	size?: number
 }
+export type ShapeLineProps = (SolidShapeFillProps & ShapeLineStyleProps) | (LinearGradientShapeFillProps & ShapeLineStyleProps)
 // used by: chart, slide, table, text
 export interface TextBaseProps {
 	/**

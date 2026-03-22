@@ -96,7 +96,10 @@ describe('Fixture-based Integration Tests', () => {
       expect(result.shapeName).toBe('custGeom')
       expect(result.options.line).toBeDefined()
       expect(result.options.points).toBeDefined()
-      expect(result.options.line!.color).toBe('4285F4')
+      expect(result.options.line!.type).toBe('solid')
+      if (result.options.line && result.options.line.type !== 'linearGradient' && result.options.line.type !== 'none') {
+        expect(result.options.line.color).toBe('4285F4')
+      }
     })
   })
 
@@ -326,7 +329,7 @@ describe('Fixture-based Integration Tests', () => {
 
       const result = convertVideo(video)
       expect(result.type).toBe('video')
-      expect(result.cover).toBe(video.poster)
+      expect(result.cover).toBeUndefined()
     })
 
     it('should convert KPI card shapes with shadows', () => {

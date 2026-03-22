@@ -56,6 +56,36 @@ import { encodeXmlEntities, getNewRelId, getSmartParseNumber, inch2Emu, valToPts
 /** counter for included charts (used for index in their filenames) */
 let _chartCounter = 0
 
+function normalizeShapeLineOptions (line: ShapeLineProps): ShapeLineProps {
+	const safeLine = line || {}
+
+	if ((safeLine.type ?? 'solid') === 'none') {
+		return { type: 'none' }
+	}
+
+	if (safeLine.type === 'linearGradient') {
+		return {
+			...safeLine,
+			type: 'linearGradient',
+			width: safeLine.width || 1,
+			dashType: safeLine.dashType || 'solid',
+			beginArrowType: safeLine.beginArrowType || null,
+			endArrowType: safeLine.endArrowType || null,
+		}
+	}
+
+	return {
+		...safeLine,
+		type: safeLine.type || 'solid',
+		width: safeLine.width || 1,
+		dashType: safeLine.dashType || 'solid',
+		beginArrowType: safeLine.beginArrowType || null,
+		endArrowType: safeLine.endArrowType || null,
+		color: safeLine.color || DEF_SHAPE_LINE_COLOR,
+		transparency: safeLine.transparency || 0,
+	}
+}
+
 /**
  * Transforms a slide definition to a slide object that is then passed to the XML transformation process.
  * @param {SlideMasterProps} props - slide definition
@@ -717,16 +747,7 @@ export function addShapeDefinition(container: Container, slide: PresSlide, shape
 	if (!shapeName) throw new Error('Missing/Invalid shape parameter! Example: `addShape(pptxgen.shapes.LINE, {x:1, y:1, w:1, h:1});`')
 
 	// 1: ShapeLineProps defaults
-	const newLineOpts: ShapeLineProps = {
-		type: options.line.type || 'solid',
-		color: options.line.color || DEF_SHAPE_LINE_COLOR,
-		transparency: options.line.transparency || 0,
-		width: options.line.width || 1,
-		dashType: options.line.dashType || 'solid',
-		beginArrowType: options.line.beginArrowType || null,
-		endArrowType: options.line.endArrowType || null,
-	}
-	if (typeof options.line === 'object' && options.line.type !== 'none') options.line = newLineOpts
+	if (typeof options.line === 'object') options.line = normalizeShapeLineOptions(options.line)
 
 	// 2: Set options defaults
 	options.x = options.x || (options.x === 0 ? 0 : 1)
@@ -739,8 +760,7 @@ export function addShapeDefinition(container: Container, slide: PresSlide, shape
 
 	// 3: Handle line (lots of deprecated opts)
 	if (typeof options.line === 'string') {
-		const tmpOpts = newLineOpts
-		tmpOpts.color = String(options.line) // @deprecated `options.line` string (was line color)
+		const tmpOpts: ShapeLineProps = normalizeShapeLineOptions({ type: 'solid', color: String(options.line) }) // @deprecated `options.line` string (was line color)
 		options.line = tmpOpts
 	}
 	if (typeof options.lineSize === 'number') options.line.width = options.lineSize // @deprecated (part of `ShapeLineProps` now)
@@ -1074,21 +1094,11 @@ export function addTextDefinition(container: Container, slide: PresSlide, text: 
 			// B:
 			if (itemOpts.shape === SHAPE_TYPE.LINE) {
 				// ShapeLineProps defaults
-				const newLineOpts: ShapeLineProps = {
-					type: itemOpts.line.type || 'solid',
-					color: itemOpts.line.color || DEF_SHAPE_LINE_COLOR,
-					transparency: itemOpts.line.transparency || 0,
-					width: itemOpts.line.width || 1,
-					dashType: itemOpts.line.dashType || 'solid',
-					beginArrowType: itemOpts.line.beginArrowType || null,
-					endArrowType: itemOpts.line.endArrowType || null,
-				}
-				if (typeof itemOpts.line === 'object') itemOpts.line = newLineOpts
+				if (typeof itemOpts.line === 'object') itemOpts.line = normalizeShapeLineOptions(itemOpts.line)
 
 				// 3: Handle line (lots of deprecated opts)
 				if (typeof itemOpts.line === 'string') {
-					const tmpOpts = newLineOpts
-					if (typeof itemOpts.line === 'string') tmpOpts.color = itemOpts.line // @deprecated [remove in v4.0]
+					const tmpOpts: ShapeLineProps = normalizeShapeLineOptions({ type: 'solid', color: itemOpts.line }) // @deprecated [remove in v4.0]
 					// tmpOpts.color = itemOpts.line!.toString() // @deprecated `itemOpts.line`:[string] (was line color)
 					itemOpts.line = tmpOpts
 				}

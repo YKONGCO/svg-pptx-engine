@@ -234,7 +234,7 @@ export function genXmlColorSelection (props: Color | SolidShapeFillProps | Shape
 				outText += '</a:gsLst>'
 			}
 
-			if (safeProps.angle) {
+			if (typeof safeProps.angle === 'number') {
 				const ang = convertRotationDegrees(safeProps.angle)
 				const scaled = safeProps.scaled ?? false
 				outText += `<a:lin ang="${ang}" scaled="${scaled ? 1 : 0}"/>`

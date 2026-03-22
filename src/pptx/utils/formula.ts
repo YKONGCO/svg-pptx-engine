@@ -1,5 +1,6 @@
 import type PptxGenJS from 'pptxgenjs'
 import { XMLParser } from 'fast-xml-parser'
+import { mml2omml } from 'mathml2omml'
 import type { TextElement } from '../../sif/types/elements/text'
 import type { Fill, GradientFill, SolidFill } from '../../sif/types/style/fill'
 import { fontStyleToBool, fontWeightToBool, hexToPptxColor, pxToInch, pxToPt, textAlignToPptx } from '../utils'
@@ -569,8 +570,7 @@ function mathNodeToOmmlChildren(node: MathNode | undefined): string {
 }
 
 export function mathMLToOmml(mathml: string): string {
-  const mathNode = parseMathML(mathml)
-  return `<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${mathNodeToOmmlChildren(mathNode)}</m:oMath>`
+  return mml2omml(mathml)
 }
 
 export function extractFormulaSource(input: string): FormulaSource | null {

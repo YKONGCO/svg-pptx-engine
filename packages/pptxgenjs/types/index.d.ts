@@ -1090,7 +1090,7 @@ declare namespace PptxGenJS {
 
 	export type ShapeFillProps = LinearGradientShapeFillProps | SolidShapeFillProps
 
-	export interface ShapeLineProps extends SolidShapeFillProps {
+	interface ShapeLineStyleProps {
 		/**
 		 * Line width (pt)
 		 * @default 1
@@ -1138,6 +1138,7 @@ declare namespace PptxGenJS {
 		 */
 		size?: number
 	}
+	export type ShapeLineProps = (SolidShapeFillProps & ShapeLineStyleProps) | (LinearGradientShapeFillProps & ShapeLineStyleProps)
 	// used by: chart, slide, table, text
 	export interface TextBaseProps {
 		/**

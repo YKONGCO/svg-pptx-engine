@@ -224,18 +224,49 @@ export function convertFill(fill: Fill): PptxGenJS.ShapeFillProps {
 /**
  * Convert stroke to pptxgenjs format
  */
-export function convertStrokeDef(stroke?: Stroke): PptxGenJS.ShapeLineProps | undefined {
+export function convertStrokeDef(stroke?: Stroke, extraOpacity?: number): PptxGenJS.ShapeLineProps | undefined {
   if (!stroke) return undefined
 
-  // Handle gradient stroke - fallback to first color
   if (stroke.type === 'gradient' && stroke.gradient) {
-    const firstStop = stroke.gradient.stops[0]
-    if (firstStop) {
-      const { color, transparency } = hexToPptxColorWithAlpha(firstStop.color)
+    if (stroke.gradient.type === 'linear') {
       return {
+        type: 'linearGradient',
+        width: pxToPt(stroke.width),
+        dashType: dashArrayToDashType(stroke.dashArray),
+        angle: resolveLinearGradientAngle(stroke.gradient),
+        scaled: false,
+        rotWithShape: true,
+        stops: stroke.gradient.stops.map(stop => {
+          const { color, transparency } = hexToPptxColorWithAlpha(stop.color)
+          return {
+            position: normalizeGradientStopPosition(stop.offset),
+            color,
+            transparency: combineTransparency(
+              combineTransparency(
+                combineTransparency(transparency, stop.opacity),
+                stroke.opacity
+              ),
+              extraOpacity
+            )
+          }
+        })
+      }
+    }
+
+    const fallbackStop = stroke.gradient.stops[stroke.gradient.stops.length - 1] ?? stroke.gradient.stops[0]
+    if (fallbackStop) {
+      const { color, transparency } = hexToPptxColorWithAlpha(fallbackStop.color)
+      return {
+        type: 'solid',
         color,
         width: pxToPt(stroke.width),
-        transparency: transparency ?? opacityToTransparency(stroke.opacity),
+        transparency: combineTransparency(
+          combineTransparency(
+            combineTransparency(transparency, fallbackStop.opacity),
+            stroke.opacity
+          ),
+          extraOpacity
+        ),
         dashType: dashArrayToDashType(stroke.dashArray)
       }
     }
@@ -246,9 +277,13 @@ export function convertStrokeDef(stroke?: Stroke): PptxGenJS.ShapeLineProps | un
   const { color, transparency } = hexToPptxColorWithAlpha(stroke.color || '#000000')
 
   return {
+    type: 'solid',
     color,
     width: pxToPt(stroke.width),
-    transparency: transparency ?? opacityToTransparency(stroke.opacity),
+    transparency: combineTransparency(
+      combineTransparency(transparency, stroke.opacity),
+      extraOpacity
+    ),
     dashType: dashArrayToDashType(stroke.dashArray)
   }
 }
@@ -332,7 +367,7 @@ export function convertShape(shape: ShapeElement, hyperlink?: PptxGenJS.Hyperlin
     w: pxToInch(shape.width * scaleX),
     h: pxToInch(shape.height * scaleY),
     fill: convertFill(shape.fill),
-    line: convertStrokeDef(shape.stroke)
+    line: convertStrokeDef(shape.stroke, shape.opacity)
   }
 
   // Handle rotation
@@ -356,16 +391,6 @@ export function convertShape(shape: ShapeElement, hyperlink?: PptxGenJS.Hyperlin
         const combinedTransparency = 1 - (1 - elementTransparency / 100) * (1 - fillTransparency / 100)
         options.fill = {
           ...fill,
-          transparency: Math.min(100, Math.round(combinedTransparency * 100))
-        }
-      }
-      // Apply transparency to line (create new object instead of mutating)
-      if (options.line) {
-        const line = options.line as PptxGenJS.ShapeLineProps
-        const lineTransparency = line.transparency ?? 0
-        const combinedTransparency = 1 - (1 - elementTransparency / 100) * (1 - lineTransparency / 100)
-        options.line = {
-          ...line,
           transparency: Math.min(100, Math.round(combinedTransparency * 100))
         }
       }

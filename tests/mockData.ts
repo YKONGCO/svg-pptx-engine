@@ -66,6 +66,23 @@ export function createMockSolidStroke(overrides?: any): any {
   }
 }
 
+export function createMockGradientStroke(overrides?: any): any {
+  return {
+    type: 'gradient',
+    width: 2,
+    opacity: 0.9,
+    gradient: {
+      type: 'linear',
+      angle: 30,
+      stops: [
+        { color: 'FF0000', offset: 0, opacity: 1 },
+        { color: '0000FF', offset: 1, opacity: 0.5 }
+      ]
+    },
+    ...overrides
+  }
+}
+
 export function createMockShadowEffect(overrides?: any): any {
   return {
     type: 'shadow',

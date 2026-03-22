@@ -93,9 +93,9 @@ export function convertVideo(video: VideoElement): PptxGenJS.MediaProps {
   }
 
   // Handle poster image (cover)
-  // Note: pptxgenjs requires cover to be a base64 data URI, not a URL
-  // If poster is a URL, we cannot use it directly
-  if (video.poster) {
+  // pptxgenjs only accepts base64 data URIs for `cover`.
+  // Remote/local URLs should be ignored here rather than throwing at runtime.
+  if (video.poster?.startsWith('data:')) {
     mediaProps.cover = video.poster
   }
 

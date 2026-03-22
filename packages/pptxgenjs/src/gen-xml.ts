@@ -521,12 +521,22 @@ function slideObjectToXml (slide: PresSlide | SlideLayout): string {
 				strSlideXml += slideItemObj.options.fill ? genXmlColorSelection(slideItemObj.options.fill) : '<a:noFill/>'
 
 				// shape Type: LINE: line color
-				if (slideItemObj.options.line) {
-					strSlideXml += slideItemObj.options.line.width ? `<a:ln w="${valToPts(slideItemObj.options.line.width)}">` : '<a:ln>'
-					if (slideItemObj.options.line.color) strSlideXml += genXmlColorSelection(slideItemObj.options.line)
-					if (slideItemObj.options.line.dashType) strSlideXml += `<a:prstDash val="${slideItemObj.options.line.dashType}"/>`
-					if (slideItemObj.options.line.beginArrowType) strSlideXml += `<a:headEnd type="${slideItemObj.options.line.beginArrowType}"/>`
-					if (slideItemObj.options.line.endArrowType) strSlideXml += `<a:tailEnd type="${slideItemObj.options.line.endArrowType}"/>`
+				const lineOpts = slideItemObj.options.line
+				const hasRenderableLine =
+					lineOpts &&
+					(lineOpts.type === 'linearGradient' ||
+						lineOpts.type === 'none' ||
+						typeof lineOpts.width === 'number' ||
+						!!lineOpts.color ||
+						!!lineOpts.dashType ||
+						!!lineOpts.beginArrowType ||
+						!!lineOpts.endArrowType)
+				if (hasRenderableLine) {
+					strSlideXml += lineOpts.width ? `<a:ln w="${valToPts(lineOpts.width)}">` : '<a:ln>'
+					if (lineOpts.type !== 'none' && (lineOpts.type === 'linearGradient' || lineOpts.color)) strSlideXml += genXmlColorSelection(lineOpts)
+					if (lineOpts.dashType) strSlideXml += `<a:prstDash val="${lineOpts.dashType}"/>`
+					if (lineOpts.beginArrowType) strSlideXml += `<a:headEnd type="${lineOpts.beginArrowType}"/>`
+					if (lineOpts.endArrowType) strSlideXml += `<a:tailEnd type="${lineOpts.endArrowType}"/>`
 					// FUTURE: `endArrowSize` < a: headEnd type = "arrow" w = "lg" len = "lg" /> 'sm' | 'med' | 'lg'(values are 1 - 9, making a 3x3 grid of w / len possibilities)
 					strSlideXml += '</a:ln>'
 				}

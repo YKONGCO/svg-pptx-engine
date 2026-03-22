@@ -1,7 +1,7 @@
 // Tests for line converter
 
 import { convertLine, convertArrowMarker } from '../src/pptx/converters/line'
-import { createMockLineElement } from './mockData'
+import { createMockGradientStroke, createMockLineElement } from './mockData'
 
 describe('Line Converter', () => {
   describe('convertLine', () => {
@@ -20,7 +20,10 @@ describe('Line Converter', () => {
       const result = convertLine(line)
 
       expect(result.options.line).toBeDefined()
-      expect(result.options.line?.color).toBe('FF00FF')
+      expect(result.options.line?.type).toBe('solid')
+      if (result.options.line && result.options.line.type !== 'linearGradient' && result.options.line.type !== 'none') {
+        expect(result.options.line.color).toBe('FF00FF')
+      }
     })
 
     it('should convert scatter-style dash arrays to dashed ppt lines', () => {
@@ -35,6 +38,34 @@ describe('Line Converter', () => {
       const result = convertLine(line)
 
       expect(result.options.line?.dashType).toBe('lgDash')
+    })
+
+    it('should convert gradient stroke lines to pptx linearGradient line props', () => {
+      const line = createMockLineElement({
+        opacity: 0.8,
+        stroke: createMockGradientStroke({
+          width: 4,
+          gradient: {
+            type: 'linear',
+            angle: 60,
+            stops: [
+              { color: '00FFAA', offset: 0, opacity: 1 },
+              { color: '0044FF', offset: 1, opacity: 0.6 }
+            ]
+          }
+        })
+      })
+      const result = convertLine(line)
+
+      expect(result.options.line).toBeDefined()
+      expect(result.options.line?.type).toBe('linearGradient')
+      if (result.options.line && result.options.line.type === 'linearGradient') {
+        expect(result.options.line.angle).toBe(60)
+        expect(result.options.line.stops).toHaveLength(2)
+        expect(result.options.line.stops[0].color).toBe('00FFAA')
+        expect(result.options.line.stops[1].color).toBe('0044FF')
+        expect(result.options.line.stops[1].transparency).toBeGreaterThan(0)
+      }
     })
   })
 

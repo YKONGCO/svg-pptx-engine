@@ -9,8 +9,9 @@
 import PptxGenJS from 'pptxgenjs'
 import type { LineElement, ArrowMarker } from '../../sif/types/elements/line'
 import type { Stroke } from '../../sif/types/style/stroke'
-import { hexToPptxColorWithAlpha, opacityToTransparency, dashArrayToDashType, pxToInch, pxToPt, arrowTypeToPptx } from '../utils'
+import { pxToInch, pxToPt, arrowTypeToPptx } from '../utils'
 import { convertPathPointsForPptx } from '../utils/path-to-pptx'
+import { convertStrokeDef } from './shape'
 
 /**
  * Convert line element to pptxgenjs shape (line)
@@ -42,32 +43,12 @@ export function convertLine(
   const width = Math.abs(x2 - x1) || 1
   const height = Math.abs(y2 - y1) || 1
 
-  // Calculate line transparency from stroke
-  // Handle gradient stroke - use first gradient color as fallback
-  let strokeColor = line.stroke.color || '#000000'
-  if (line.stroke.type === 'gradient' && line.stroke.gradient) {
-    const firstStop = line.stroke.gradient.stops[0]
-    if (firstStop) {
-      strokeColor = firstStop.color
-    }
-  }
-  const { color, transparency: strokeColorTransparency } = hexToPptxColorWithAlpha(strokeColor)
-  const strokeTransparency = strokeColorTransparency ?? opacityToTransparency(line.stroke.opacity) ?? 0
-
-  // Combine line element opacity with stroke transparency
-  // Formula: combined = 1 - (1 - stroke_transparency) * (1 - element_opacity)
-  let combinedTransparency = strokeTransparency
-  if (line.opacity !== undefined && line.opacity < 1) {
-    const elementTransparency = opacityToTransparency(line.opacity) ?? 0
-    combinedTransparency = 1 - (1 - strokeTransparency / 100) * (1 - elementTransparency / 100)
-    combinedTransparency = Math.round(combinedTransparency * 100)
-  }
-
-  const lineOptions: PptxGenJS.ShapeLineProps = {
-    color,
+  const lineOptions: PptxGenJS.ShapeLineProps = convertStrokeDef(line.stroke, line.opacity) ?? {
+    type: 'solid',
+    color: '000000',
     width: pxToPt(line.stroke.width),
-    transparency: combinedTransparency,
-    dashType: dashArrayToDashType(line.stroke.dashArray)
+    transparency: 0,
+    dashType: 'solid'
   }
 
   // Handle arrow markers if present
@@ -122,21 +103,12 @@ export function convertLine(
  * Note: This function is kept for potential reuse but convertLine handles stroke conversion directly
  */
 export function convertStroke(stroke: Stroke): PptxGenJS.ShapeLineProps {
-  // Handle gradient stroke - use first gradient color as fallback
-  let strokeColor = stroke.color || '#000000'
-  if (stroke.type === 'gradient' && stroke.gradient) {
-    const firstStop = stroke.gradient.stops[0]
-    if (firstStop) {
-      strokeColor = firstStop.color
-    }
-  }
-  const { color, transparency } = hexToPptxColorWithAlpha(strokeColor)
-
-  return {
-    color,
+  return convertStrokeDef(stroke) ?? {
+    type: 'solid',
+    color: '000000',
     width: pxToPt(stroke.width),
-    transparency: transparency ?? opacityToTransparency(stroke.opacity),
-    dashType: dashArrayToDashType(stroke.dashArray)
+    transparency: 0,
+    dashType: 'solid'
   }
 }
 

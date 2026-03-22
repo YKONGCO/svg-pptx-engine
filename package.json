@@ -1,13 +1,22 @@
 {
   "name": "svg-pptx-engine",
   "version": "1.0.0",
+  "private": true,
   "description": "SVG to PPTX converter with intermediate format",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "build": "tsc",
-    "build:pptxgen": "cd packages/pptxgenjs && tsc",
-    "build:all": "npm run build:pptxgen && npm run build",
+    "build": "npm run build:pptxgen && npm run build:mathml && tsc",
+    "build:pptxgen": "npm run build --workspace=pptxgenjs",
+    "build:mathml": "npm run build --workspace=mathml2omml",
+    "build:all": "npm run build",
+    "convert:svg": "node scripts/svg-to-pptx.js",
+    "convert:json": "node scripts/convert-json.js",
+    "generate:pptx": "node scripts/generate-pptx.js",
+    "validate:pptx": "node scripts/validate-pptx.js",
     "dev": "tsc --watch",
     "lint": "eslint src --ext .ts",
     "test": "jest"
@@ -20,12 +29,14 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "fast-xml-parser": "^5.5.6",
+    "fast-xml-parser": "^5.5.8",
     "jszip": "^3.10.1",
-    "pptxgenjs": "file:packages/pptxgenjs",
-    "sharp": "^0.34.5"
+    "mathml2omml": "workspace:*",
+    "pptxgenjs": "workspace:*"
   },
   "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.1",
+    "@rollup/plugin-node-resolve": "^16.0.1",
     "@types/jest": "^30.0.0",
     "@types/jszip": "^3.4.0",
     "@types/node": "^25.5.0",
@@ -33,7 +44,10 @@
     "@typescript-eslint/parser": "^8.57.1",
     "eslint": "^10.0.3",
     "jest": "^30.3.0",
+    "rollup": "^4.24.2",
+    "rollup-plugin-typescript2": "^0.36.0",
+    "tslib": "^2.8.0",
     "ts-jest": "^29.4.6",
-    "typescript": "^5.3.3"
+    "typescript": "^5.6.3"
   }
 }

@@ -510,6 +510,48 @@ describe('SVG to SIF Converter', () => {
       expect(rect.type).toBe('shape')
       expect(rect.visible).toBe(false)
     })
+
+    it('should map nested svg viewBox into absolute child coordinates', () => {
+      const svg = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg">
+        <svg x="100" y="40" width="120" height="60" viewBox="0 0 24 12">
+          <rect x="0" y="0" width="24" height="12" fill="#dbeafe" />
+          <circle cx="6" cy="6" r="3" fill="#2563eb" />
+        </svg>
+      </svg>`
+
+      const elements = svgToSif(svg, { preserveGroups: false })
+      const rect = elements[0] as any
+      const circle = elements[1] as any
+
+      expect(elements).toHaveLength(2)
+      expect(rect.type).toBe('shape')
+      expect(rect.x).toBe(100)
+      expect(rect.y).toBe(40)
+      expect(rect.width).toBe(120)
+      expect(rect.height).toBe(60)
+      expect(circle.type).toBe('shape')
+      expect(circle.cx).toBeCloseTo(130, 4)
+      expect(circle.cy).toBeCloseTo(70, 4)
+      expect(circle.r).toBeCloseTo(15, 4)
+    })
+
+    it('should combine nested svg viewport mapping with svg transform', () => {
+      const svg = `<svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg">
+        <svg x="40" y="20" width="200" height="100" viewBox="0 0 100 50" transform="translate(10, 5)">
+          <rect x="10" y="5" width="30" height="20" fill="#22c55e" />
+        </svg>
+      </svg>`
+
+      const elements = svgToSif(svg, { preserveGroups: false })
+      const rect = elements[0] as any
+
+      expect(elements).toHaveLength(1)
+      expect(rect.type).toBe('shape')
+      expect(rect.x).toBeCloseTo(70, 4)
+      expect(rect.y).toBeCloseTo(35, 4)
+      expect(rect.width).toBeCloseTo(60, 4)
+      expect(rect.height).toBeCloseTo(40, 4)
+    })
   })
 
   describe('Fill and Stroke', () => {
@@ -718,6 +760,79 @@ describe('SVG to SIF Converter', () => {
       expect(elements[0].type).toBe('shape')
       expect(elements[1].type).toBe('shape')
       expect(elements[2].type).toBe('text')
+    })
+  })
+
+  describe('Media Elements', () => {
+    it('should convert image element with remote href', () => {
+      const svg = `<svg viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+        <image x="12" y="18" width="90" height="60" href="https://www.w3schools.com/html/img_chania.jpg" preserveAspectRatio="none" opacity="0.8" />
+      </svg>`
+
+      const elements = svgToSif(svg)
+      const image = elements[0] as any
+
+      expect(elements).toHaveLength(1)
+      expect(image.type).toBe('image')
+      expect(image.href).toBe('https://www.w3schools.com/html/img_chania.jpg')
+      expect(image.x).toBe(12)
+      expect(image.y).toBe(18)
+      expect(image.width).toBe(90)
+      expect(image.height).toBe(60)
+      expect(image.preserveAspectRatio).toBe(false)
+      expect(image.opacity).toBe(0.8)
+    })
+
+    it('should convert video element with poster and controls', () => {
+      const svg = `<svg viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg">
+        <video x="24" y="30" width="180" height="100" href="https://www.w3schools.com/html/mov_bbb.mp4" poster="https://www.w3schools.com/html/img_chania.jpg" controls="true" />
+      </svg>`
+
+      const elements = svgToSif(svg)
+      const video = elements[0] as any
+
+      expect(elements).toHaveLength(1)
+      expect(video.type).toBe('video')
+      expect(video.href).toBe('https://www.w3schools.com/html/mov_bbb.mp4')
+      expect(video.poster).toBe('https://www.w3schools.com/html/img_chania.jpg')
+      expect(video.controls).toBe(true)
+      expect(video.width).toBe(180)
+      expect(video.height).toBe(100)
+      expect(video.format).toBe('mp4')
+    })
+
+    it('should convert audio element with remote href', () => {
+      const svg = `<svg viewBox="0 0 300 160" xmlns="http://www.w3.org/2000/svg">
+        <audio x="36" y="42" width="120" height="36" href="https://www.w3schools.com/html/horse.mp3" controls="true" autoplay="true" />
+      </svg>`
+
+      const elements = svgToSif(svg)
+      const audio = elements[0] as any
+
+      expect(elements).toHaveLength(1)
+      expect(audio.type).toBe('audio')
+      expect(audio.href).toBe('https://www.w3schools.com/html/horse.mp3')
+      expect(audio.autoplay).toBe(true)
+      expect(audio.format).toBe('mp3')
+      expect(audio.x).toBe(36)
+      expect(audio.y).toBe(42)
+      expect(audio.width).toBe(120)
+      expect(audio.height).toBe(36)
+    })
+
+    it('should apply transforms to audio bounds', () => {
+      const svg = `<svg viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg">
+        <audio x="10" y="20" width="80" height="24" href="https://www.w3schools.com/html/horse.mp3" transform="translate(15, 25)" />
+      </svg>`
+
+      const elements = svgToSif(svg)
+      const audio = elements[0] as any
+
+      expect(audio.type).toBe('audio')
+      expect(audio.x).toBe(25)
+      expect(audio.y).toBe(45)
+      expect(audio.width).toBe(80)
+      expect(audio.height).toBe(24)
     })
   })
 

@@ -33,6 +33,8 @@ export interface SvgToSifOptions {
   preserveGroups?: boolean
   includeDefs?: boolean
   defaultFontFamily?: string
+  /** Base directory for resolving relative media paths (e.g., './image.png') */
+  baseDir?: string
 }
 
 interface ConversionContext {
@@ -44,6 +46,8 @@ interface ConversionContext {
   filterMap: Map<string, FilterTemplate>
   options: Required<SvgToSifOptions>
   activeFilterId?: string
+  /** Base directory for resolving relative media paths */
+  baseDir?: string
 }
 
 const PRESENTATION_ATTRS = [
@@ -74,6 +78,7 @@ export function svgToSif(svgString: string, options?: SvgToSifOptions): Element[
     preserveGroups: true,
     includeDefs: true,
     defaultFontFamily: 'sans-serif',
+    baseDir: '',
     ...options
   }
 
@@ -96,7 +101,8 @@ export function svgToSif(svgString: string, options?: SvgToSifOptions): Element[
     opacity: 1,
     gradientMap,
     filterMap: buildFilterMap(defs),
-    options: opts
+    options: opts,
+    baseDir: opts.baseDir
   }
 
   const elements: Element[] = []
@@ -140,7 +146,7 @@ function buildFilterMap(defs: Map<string, Record<string, unknown>>): Map<string,
 function convertElement(element: Record<string, unknown>, context: ConversionContext): Element | undefined {
   const { tagName, node } = unwrapElement(element)
   const prepared = applyContextToNode(node, context)
-  const nextContext = createChildContext(prepared, context)
+  const nextContext = createChildContext(prepared, context, tagName)
 
   switch (tagName) {
     case 'rect':
@@ -162,11 +168,11 @@ function convertElement(element: Record<string, unknown>, context: ConversionCon
     case 'text':
       return convertTextElement(prepared, nextContext)
     case 'image':
-      return convertMediaElement(() => convertImage(prepared, generateId('image'), { transformMatrix: nextContext.transformMatrix }), prepared, nextContext)
+      return convertMediaElement(() => convertImage(prepared, generateId('image'), { transformMatrix: nextContext.transformMatrix, baseDir: context.baseDir }), prepared, nextContext)
     case 'video':
-      return convertMediaElement(() => convertVideo(prepared, generateId('video'), { transformMatrix: nextContext.transformMatrix }), prepared, nextContext)
+      return convertMediaElement(() => convertVideo(prepared, generateId('video'), { transformMatrix: nextContext.transformMatrix, baseDir: context.baseDir }), prepared, nextContext)
     case 'audio':
-      return convertMediaElement(() => convertAudio(prepared, generateId('audio'), { transformMatrix: nextContext.transformMatrix }), prepared, nextContext)
+      return convertMediaElement(() => convertAudio(prepared, generateId('audio'), { transformMatrix: nextContext.transformMatrix, baseDir: context.baseDir }), prepared, nextContext)
     case 'g':
     case 'svg':
       return convertGroupElement(prepared, nextContext)
@@ -240,14 +246,15 @@ function applyElementContext<T extends Element>(element: T, context: ConversionC
   return element
 }
 
-function createChildContext(node: Record<string, unknown>, parent: ConversionContext): ConversionContext {
+function createChildContext(node: Record<string, unknown>, parent: ConversionContext, tagName?: string): ConversionContext {
   const ownMatrix = parseTransformToMatrix(getAttr(node, 'transform'))
+  const viewportMatrix = tagName === 'svg' ? getNestedSvgViewportMatrix(node) : identityMatrix()
   const ownOpacity = parseNumeric(node, 'opacity', 1)
   const visibility = getAttr(node, 'visibility')
 
   return {
     ...parent,
-    transformMatrix: multiplyMatrices(parent.transformMatrix, ownMatrix),
+    transformMatrix: multiplyMatrices(parent.transformMatrix, multiplyMatrices(ownMatrix, viewportMatrix)),
     inheritedStyles: collectInheritedStyles(node, parent.inheritedStyles),
     visible: parent.visible && visibility !== 'hidden' && visibility !== 'collapse',
     opacity: parent.opacity * ownOpacity
@@ -327,6 +334,54 @@ function parseNumeric(node: Record<string, unknown>, name: string, fallback: num
   if (value === undefined) return fallback
   const parsed = parseFloat(value)
   return Number.isNaN(parsed) ? fallback : parsed
+}
+
+function getNestedSvgViewportMatrix(node: Record<string, unknown>): TransformMatrix {
+  const x = parseNumeric(node, 'x', 0)
+  const y = parseNumeric(node, 'y', 0)
+  const viewBox = parseViewBox(getAttr(node, 'viewBox'))
+
+  if (!viewBox) {
+    return [1, 0, 0, 1, x, y]
+  }
+
+  const width = parseNumeric(node, 'width', viewBox.width)
+  const height = parseNumeric(node, 'height', viewBox.height)
+
+  if (viewBox.width === 0 || viewBox.height === 0 || width === 0 || height === 0) {
+    return [1, 0, 0, 1, x, y]
+  }
+
+  const scaleX = width / viewBox.width
+  const scaleY = height / viewBox.height
+
+  return multiplyMatrices(
+    [1, 0, 0, 1, x, y],
+    multiplyMatrices(
+      [scaleX, 0, 0, scaleY, 0, 0],
+      [1, 0, 0, 1, -viewBox.x, -viewBox.y]
+    )
+  )
+}
+
+function parseViewBox(value: string | undefined): { x: number; y: number; width: number; height: number } | undefined {
+  if (!value?.trim()) return undefined
+
+  const parts = value
+    .trim()
+    .split(/[\s,]+/)
+    .map(part => parseFloat(part))
+
+  if (parts.length < 4 || parts.some(part => Number.isNaN(part))) {
+    return undefined
+  }
+
+  return {
+    x: parts[0],
+    y: parts[1],
+    width: parts[2],
+    height: parts[3]
+  }
 }
 
 function applyInlineStyle(node: Record<string, unknown>): void {

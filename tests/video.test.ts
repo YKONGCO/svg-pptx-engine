@@ -25,13 +25,22 @@ describe('Video Converter', () => {
       expect(result.path).toBe('./videos/clip.mp4')
     })
 
-    it('should handle video with poster image', () => {
+    it('should keep base64 poster image', () => {
+      const video = createMockVideoElement({
+        poster: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+      })
+      const result = convertVideo(video)
+
+      expect(result.cover).toBe(video.poster)
+    })
+
+    it('should ignore poster URLs that are not data URIs', () => {
       const video = createMockVideoElement({
         poster: 'https://example.com/poster.jpg'
       })
       const result = convertVideo(video)
 
-      expect(result.cover).toBe('https://example.com/poster.jpg')
+      expect(result.cover).toBeUndefined()
     })
   })
 
