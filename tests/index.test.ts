@@ -1,4 +1,4 @@
-import { jsonToPptx, svgToPptx, svgToSlideDocument } from '../src'
+import { jsonToPptx, PROTOCOL_VERSION, svgToPptx, svgToSlideDocument } from '../src'
 
 describe('Public API', () => {
   it('creates a slide document from svg content', () => {
@@ -8,7 +8,7 @@ describe('Public API', () => {
       </svg>
     `)
 
-    expect(document.version).toBe('1.0.0')
+    expect(document.version).toBe(PROTOCOL_VERSION)
     expect(document.width).toBe(320)
     expect(document.height).toBe(180)
     expect(document.slides).toHaveLength(1)

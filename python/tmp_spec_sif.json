@@ -1,0 +1,532 @@
+{
+  "elements": [
+    {
+      "id": "rect_1",
+      "type": "shape",
+      "shapeType": "rect",
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 720,
+      "fill": {
+        "type": "gradient",
+        "gradient": {
+          "type": "linear",
+          "stops": [
+            {
+              "offset": 0,
+              "color": "#f8fafc"
+            },
+            {
+              "offset": 1,
+              "color": "#e2e8f0"
+            }
+          ],
+          "angle": 45,
+          "x1": 0,
+          "y1": 0,
+          "x2": 1,
+          "y2": 1
+        }
+      },
+      "opacity": 1,
+      "visible": true
+    },
+    {
+      "id": "text_2",
+      "type": "text",
+      "x": 72,
+      "y": 54,
+      "width": 516.5999999999999,
+      "height": 43.5,
+      "text": "SVG to PPTX Spec Example",
+      "fontFamily": "Arial",
+      "fontSize": 30,
+      "fontWeight": 700,
+      "fill": {
+        "type": "solid",
+        "color": "#0f172a"
+      },
+      "textAlign": "left",
+      "opacity": 1,
+      "visible": true
+    },
+    {
+      "id": "text_3",
+      "type": "text",
+      "x": 72,
+      "y": 98.8,
+      "width": 943.8799999999989,
+      "height": 20.3,
+      "text": "This sample follows the project SVG subset and covers layout, text, media, gradients, and nested svg.",
+      "fontFamily": "Arial",
+      "fontSize": 14,
+      "fill": {
+        "type": "solid",
+        "color": "#475569"
+      },
+      "textAlign": "left",
+      "opacity": 1,
+      "visible": true
+    },
+    {
+      "id": "group_10",
+      "type": "group",
+      "children": [
+        {
+          "id": "rect_4",
+          "type": "shape",
+          "shapeType": "rect",
+          "x": 72,
+          "y": 148,
+          "width": 360,
+          "height": 220,
+          "rx": 24,
+          "ry": 24,
+          "fill": {
+            "type": "solid",
+            "color": "#ffffff"
+          },
+          "stroke": {
+            "color": "#cbd5e1",
+            "width": 2
+          },
+          "opacity": 1,
+          "visible": true,
+          "effect": {
+            "type": "shadow",
+            "color": "#cbd5e1",
+            "offsetX": 1,
+            "offsetY": 3,
+            "blur": 2,
+            "opacity": 0.2
+          }
+        },
+        {
+          "id": "text_5",
+          "type": "text",
+          "x": 100,
+          "y": 171.6,
+          "width": 164.87999999999997,
+          "height": 26.099999999999998,
+          "text": "Metrics Card",
+          "fontFamily": "Arial",
+          "fontSize": 18,
+          "fontWeight": 700,
+          "fill": {
+            "type": "solid",
+            "color": "#0f172a"
+          },
+          "textAlign": "left",
+          "opacity": 1,
+          "visible": true
+        },
+        {
+          "id": "text_6",
+          "type": "text",
+          "x": 100,
+          "y": 203.6,
+          "width": 417.0400000000002,
+          "height": 18.849999999999998,
+          "text": "Use explicit coordinates and small text blocks.",
+          "fontFamily": "Arial",
+          "fontSize": 13,
+          "fill": {
+            "type": "solid",
+            "color": "#64748b"
+          },
+          "textAlign": "left",
+          "opacity": 1,
+          "visible": true
+        },
+        {
+          "id": "line_7",
+          "type": "shape",
+          "shapeType": "line",
+          "x": 100,
+          "y": 244,
+          "width": 292,
+          "height": 1,
+          "x1": 100,
+          "y1": 244,
+          "x2": 392,
+          "y2": 244,
+          "fill": {
+            "type": "none"
+          },
+          "stroke": {
+            "type": "gradient",
+            "gradient": {
+              "type": "linear",
+              "stops": [
+                {
+                  "offset": 0,
+                  "color": "#f94144"
+                },
+                {
+                  "offset": 1,
+                  "color": "#577590"
+                }
+              ],
+              "angle": 0,
+              "x1": 0,
+              "y1": 0,
+              "x2": 1,
+              "y2": 0
+            },
+            "width": 6,
+            "lineCap": "round"
+          },
+          "opacity": 1,
+          "visible": true
+        },
+        {
+          "id": "text_8",
+          "type": "text",
+          "x": 100,
+          "y": 266.4,
+          "width": 132.72,
+          "height": 60.9,
+          "text": "68%",
+          "fontFamily": "Arial",
+          "fontSize": 42,
+          "fontWeight": 700,
+          "fill": {
+            "type": "solid",
+            "color": "#0f172a"
+          },
+          "textAlign": "left",
+          "opacity": 1,
+          "visible": true
+        },
+        {
+          "id": "text_9",
+          "type": "text",
+          "x": 100,
+          "y": 321.6,
+          "width": 341.37999999999994,
+          "height": 18.849999999999998,
+          "text": "Q1:conversion improved after rollout",
+          "runs": [
+            {
+              "text": "Q1:",
+              "fontFamily": "Arial",
+              "fontSize": 13,
+              "fontWeight": 700,
+              "fill": {
+                "type": "solid",
+                "color": "#000000"
+              }
+            },
+            {
+              "text": "conversion improved after rollout",
+              "fontFamily": "Arial",
+              "fontSize": 13,
+              "fill": {
+                "type": "solid",
+                "color": "#000000"
+              }
+            }
+          ],
+          "fontFamily": "Arial",
+          "fontSize": 13,
+          "fill": {
+            "type": "solid",
+            "color": "#64748b"
+          },
+          "textAlign": "left",
+          "opacity": 1,
+          "visible": true
+        }
+      ],
+      "visible": true
+    },
+    {
+      "id": "group_17",
+      "type": "group",
+      "children": [
+        {
+          "id": "rect_11",
+          "type": "shape",
+          "shapeType": "rect",
+          "x": 464,
+          "y": 148,
+          "width": 320,
+          "height": 220,
+          "rx": 24,
+          "ry": 24,
+          "fill": {
+            "type": "solid",
+            "color": "#ffffff"
+          },
+          "stroke": {
+            "color": "#cbd5e1",
+            "width": 2
+          },
+          "opacity": 1,
+          "visible": true
+        },
+        {
+          "id": "text_12",
+          "type": "text",
+          "x": 488,
+          "y": 171.6,
+          "width": 201.59999999999997,
+          "height": 26.099999999999998,
+          "text": "Nested SVG Icon",
+          "fontFamily": "Arial",
+          "fontSize": 18,
+          "fontWeight": 700,
+          "fill": {
+            "type": "solid",
+            "color": "#0f172a"
+          },
+          "textAlign": "left",
+          "opacity": 1,
+          "visible": true
+        },
+        {
+          "id": "text_13",
+          "type": "text",
+          "x": 488,
+          "y": 203.6,
+          "width": 471.6400000000003,
+          "height": 18.849999999999998,
+          "text": "Nested svg should always declare viewport attributes.",
+          "fontFamily": "Arial",
+          "fontSize": 13,
+          "fill": {
+            "type": "solid",
+            "color": "#64748b"
+          },
+          "textAlign": "left",
+          "opacity": 1,
+          "visible": true
+        },
+        {
+          "id": "group_16",
+          "type": "group",
+          "children": [
+            {
+              "id": "rect_14",
+              "type": "shape",
+              "shapeType": "rect",
+              "x": 488,
+              "y": 240,
+              "width": 96,
+              "height": 96,
+              "rx": 6,
+              "ry": 6,
+              "fill": {
+                "type": "solid",
+                "color": "#dbeafe"
+              },
+              "opacity": 1,
+              "visible": true
+            },
+            {
+              "id": "path_15",
+              "type": "shape",
+              "shapeType": "path",
+              "x": 510.75,
+              "y": 270.75,
+              "width": 50.5,
+              "height": 34.5,
+              "d": "M 512 288 L 528 304 L 560 272",
+              "fillRule": "nonzero",
+              "points": [
+                {
+                  "x": 512,
+                  "y": 288,
+                  "type": "M",
+                  "moveTo": true
+                },
+                {
+                  "x": 528,
+                  "y": 304,
+                  "type": "L"
+                },
+                {
+                  "x": 560,
+                  "y": 272,
+                  "type": "L"
+                }
+              ],
+              "fill": {
+                "type": "none"
+              },
+              "stroke": {
+                "color": "#2563eb",
+                "width": 2.5,
+                "lineCap": "round",
+                "lineJoin": "round"
+              },
+              "opacity": 1,
+              "visible": true
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "visible": true
+    },
+    {
+      "id": "image_18",
+      "type": "image",
+      "x": 824,
+      "y": 148,
+      "width": 384,
+      "height": 220,
+      "href": "https://www.w3schools.com/html/img_chania.jpg",
+      "preserveAspectRatio": false,
+      "flipH": false,
+      "flipV": false,
+      "format": "jpg",
+      "opacity": 1,
+      "visible": true
+    },
+    {
+      "id": "video_19",
+      "type": "video",
+      "x": 72,
+      "y": 420,
+      "width": 420,
+      "height": 220,
+      "href": "https://www.w3schools.com/html/mov_bbb.mp4",
+      "autoplay": false,
+      "loop": false,
+      "muted": false,
+      "controls": true,
+      "format": "mp4",
+      "opacity": 1,
+      "visible": true
+    },
+    {
+      "id": "audio_20",
+      "type": "audio",
+      "x": 536,
+      "y": 500,
+      "width": 160,
+      "height": 36,
+      "href": "https://www.w3schools.com/html/horse.mp3",
+      "autoplay": false,
+      "loop": false,
+      "muted": false,
+      "format": "mp3",
+      "opacity": 1,
+      "visible": true
+    },
+    {
+      "id": "group_25",
+      "type": "group",
+      "children": [
+        {
+          "id": "rect_21",
+          "type": "shape",
+          "shapeType": "rect",
+          "x": 836,
+          "y": 428,
+          "width": 320,
+          "height": 180,
+          "rx": 14,
+          "ry": 14,
+          "fill": {
+            "type": "solid",
+            "color": "#0f172a"
+          },
+          "opacity": 1,
+          "visible": true
+        },
+        {
+          "id": "text_22",
+          "type": "text",
+          "x": 864,
+          "y": 455.2,
+          "width": 337.27999999999986,
+          "height": 23.2,
+          "text": "Nested viewport with transform",
+          "fontFamily": "Arial",
+          "fontSize": 16,
+          "fill": {
+            "type": "solid",
+            "color": "#94a3b8"
+          },
+          "textAlign": "left",
+          "opacity": 1,
+          "visible": true
+        },
+        {
+          "id": "path_23",
+          "type": "shape",
+          "shapeType": "path",
+          "x": 866.5,
+          "y": 514.5,
+          "width": 259,
+          "height": 99,
+          "d": "M 868 564 C 912 516 948 516 992 564 S 1072 600 1124 544",
+          "fillRule": "nonzero",
+          "points": [
+            {
+              "x": 868,
+              "y": 564,
+              "type": "M",
+              "moveTo": true
+            },
+            {
+              "x": 992,
+              "y": 564,
+              "type": "C",
+              "curve": {
+                "type": "cubic",
+                "x1": 912,
+                "y1": 516,
+                "x2": 948,
+                "y2": 516
+              }
+            },
+            {
+              "x": 1124,
+              "y": 544,
+              "type": "C",
+              "curve": {
+                "type": "cubic",
+                "x1": 1036,
+                "y1": 612,
+                "x2": 1072,
+                "y2": 600
+              }
+            }
+          ],
+          "fill": {
+            "type": "none"
+          },
+          "stroke": {
+            "color": "#38bdf8",
+            "width": 3
+          },
+          "opacity": 1,
+          "visible": true
+        },
+        {
+          "id": "circle_24",
+          "type": "shape",
+          "shapeType": "circle",
+          "x": 1116,
+          "y": 536,
+          "width": 16,
+          "height": 16,
+          "cx": 1124,
+          "cy": 544,
+          "r": 8,
+          "fill": {
+            "type": "solid",
+            "color": "#38bdf8"
+          },
+          "opacity": 1,
+          "visible": true
+        }
+      ],
+      "visible": true
+    }
+  ]
+}

@@ -13,17 +13,20 @@ import { PresSlide, SlideLayout, ISlideRelMedia } from './core-interfaces'
 export function encodeSlideMediaRels(layout: PresSlide | SlideLayout): Array<Promise<string>> {
 	// STEP 1: Detect real Node runtime once
 	const isNode = typeof process !== 'undefined' && !!process.versions?.node && process.release?.name === 'node'
-	// These will be filled only when we’re in Node
+	// These will be filled only when we're in Node
 	let fs: typeof import('node:fs') | undefined
+	let http: typeof import('node:http') | undefined
 	let https: typeof import('node:https') | undefined
 
 	// STEP 2: Lazy-load Node built-ins if needed
 	const loadNodeDeps = isNode
 		? async () => {
-			; ({ default: fs } = await import('node:fs')); ({ default: https } = await import('node:https'))
+			; ({ default: fs } = await import('node:fs'))
+			; ({ default: http } = await import('node:http'))
+			; ({ default: https } = await import('node:https'))
 		}
 		: async () => { }
-	// Immediately start it when we know we’re in Node
+	// Immediately start it when we know we're in Node
 	if (isNode) loadNodeDeps()
 
 	// STEP 3: Prepare promises list
@@ -72,9 +75,10 @@ export function encodeSlideMediaRels(layout: PresSlide | SlideLayout): Array<Pro
 					}
 
 					// ────────────  NODE HTTP(S)  ────────────
-					if (isNode && https && rel.path.startsWith('http')) {
+					if (isNode && rel.path.startsWith('http')) {
+						const httpClient = rel.path.startsWith('https') ? https : http
 						return await new Promise<string>((resolve, reject) => {
-							https.get(rel.path, res => {
+							httpClient.get(rel.path, res => {
 								let raw = ''
 								res.setEncoding('binary') // IMPORTANT: Only binary encoding works
 								res.on('data', chunk => (raw += chunk))
@@ -90,7 +94,7 @@ export function encodeSlideMediaRels(layout: PresSlide | SlideLayout): Array<Pro
 									candidateRels
 										.filter(dupe => dupe.isDuplicate && dupe.path === rel.path)
 										.forEach(dupe => (dupe.data = rel.data))
-									reject(new Error(`ERROR! Unable to load image (https.get): ${rel.path}`))
+									reject(new Error(`ERROR! Unable to load image (http.get): ${rel.path}`))
 								})
 							})
 						})

@@ -8,6 +8,7 @@ export * from './line'
 export * from './group'
 export * from './video'
 export * from './audio'
+export * from './icon'
 
 // Re-export Element union type
 export type { Element, ElementType, BaseElement } from './base'
@@ -18,3 +19,4 @@ export type { LineElement, ArrowHeadType, ArrowMarker } from './line'
 export type { GroupElement } from './group'
 export type { VideoElement, VideoFormat, VideoFit } from './video'
 export type { AudioElement, AudioFormat, AudioPlaybackMode } from './audio'
+export type { IconElement } from './icon'

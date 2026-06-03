@@ -680,7 +680,8 @@ describe('SVG to SIF Converter', () => {
 
       const elements = svgToSif(svg)
       expect(elements[0].type).toBe('line')
-      expect((elements[0] as any).markerEnd).toBe('arrow')
+      expect((elements[0] as any).markerEnd).toBeDefined()
+      expect((elements[0] as any).markerEnd.type).toBe('arrow')
       expect((elements[0] as any).x1).toBe(10)
       expect((elements[0] as any).x2).toBe(80)
     })

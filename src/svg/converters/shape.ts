@@ -24,10 +24,14 @@ import {
   type TransformMatrix
 } from './group'
 import { parsePathToPoints } from '../utils/path-parser'
+import { resolveMarkerAttributeWithMap, type MarkerMap } from './marker'
 
 export interface ShapeConversionOptions {
   gradientMap?: Map<string, LinearGradient | RadialGradient>
   transformMatrix?: TransformMatrix
+  /** Marker defs (Phase 1.2). When provided, `marker-*` attributes on
+   * lines and polylines are resolved to structured ArrowMarker. */
+  markerMap?: MarkerMap
 }
 
 export function convertMarkedLine(
@@ -58,10 +62,15 @@ export function convertMarkedLine(
     stroke
   }
 
-  const markerStart = normalizeMarkerId(getAttr(element, 'marker-start'))
-  const markerEnd = normalizeMarkerId(getAttr(element, 'marker-end'))
-  if (markerStart) line.markerStart = markerStart
-  if (markerEnd) line.markerEnd = markerEnd
+  const markerMap = options?.markerMap
+  if (markerMap) {
+    const markerStart = resolveMarkerAttributeWithMap(getAttr(element, 'marker-start'), markerMap)
+    const markerEnd = resolveMarkerAttributeWithMap(getAttr(element, 'marker-end'), markerMap)
+    const markerMid = resolveMarkerAttributeWithMap(getAttr(element, 'marker-mid'), markerMap)
+    if (markerStart) line.markerStart = markerStart
+    if (markerEnd) line.markerEnd = markerEnd
+    if (markerMid) line.markerMid = markerMid
+  }
 
   const opacity = parseOpacity(getAttr(element, 'opacity'))
   if (opacity !== undefined) line.opacity = opacity
@@ -77,6 +86,83 @@ export function convertMarkedLine(
   }
 
   return line
+}
+
+/**
+ * Build a LineElement from a polyline that has a `marker-mid` attribute
+ * (and optionally `marker-start` / `marker-end`). The LineElement's
+ * endpoints collapse to the first and last point of the polyline; the
+ * `markerMid` records the per-vertex marker so the renderer can place
+ * a copy at every interior vertex.
+ */
+export function convertMarkedPolyline(
+  element: Record<string, unknown>,
+  id: string,
+  options?: ShapeConversionOptions
+): LineElement {
+  const matrix = resolveMatrix(element, options)
+  const points = getPolylinePoints(element)
+  if (points.length < 2) {
+    // Fall back to polyline-as-shape; can't form a line.
+    return convertPolyline(element, id, options) as unknown as LineElement
+  }
+
+  // Transform points to absolute coordinates.
+  const transformed = points.map(p => applyMatrixToPoint(p.x, p.y, matrix))
+  const first = transformed[0]
+  const last = transformed[transformed.length - 1]
+  const xs = transformed.map(p => p.x)
+  const ys = transformed.map(p => p.y)
+  const minX = Math.min(...xs)
+  const minY = Math.min(...ys)
+  const maxX = Math.max(...xs)
+  const maxY = Math.max(...ys)
+  const stroke = extractStroke(element, options?.gradientMap) || { color: '#000000', width: 1 }
+
+  const line: LineElement = {
+    id,
+    type: 'line',
+    x: minX,
+    y: minY,
+    width: Math.max(maxX - minX, 1),
+    height: Math.max(maxY - minY, 1),
+    x1: first.x,
+    y1: first.y,
+    x2: last.x,
+    y2: last.y,
+    stroke
+  }
+
+  const markerMap = options?.markerMap
+  if (markerMap) {
+    const markerStart = resolveMarkerAttributeWithMap(getAttr(element, 'marker-start'), markerMap)
+    const markerEnd = resolveMarkerAttributeWithMap(getAttr(element, 'marker-end'), markerMap)
+    const markerMid = resolveMarkerAttributeWithMap(getAttr(element, 'marker-mid'), markerMap)
+    if (markerStart) line.markerStart = markerStart
+    if (markerEnd) line.markerEnd = markerEnd
+    if (markerMid) line.markerMid = markerMid
+  }
+
+  const opacity = parseOpacity(getAttr(element, 'opacity'))
+  if (opacity !== undefined) line.opacity = opacity
+
+  const rotation = extractRotation(matrix)
+  if (rotation !== undefined) {
+    line.transform = { rotate: rotation }
+  }
+
+  return line
+}
+
+function getPolylinePoints(element: Record<string, unknown>): Array<{ x: number; y: number }> {
+  const raw = getAttr(element, 'points') ?? ''
+  return raw
+    .trim()
+    .split(/\s+/)
+    .map(pair => pair.split(','))
+    .filter(parts => parts.length >= 2)
+    .map(([x, y]) => ({ x: Number(x), y: Number(y) }))
+    .filter(p => Number.isFinite(p.x) && Number.isFinite(p.y))
 }
 
 export function convertRect(element: Record<string, unknown>, id: string, options?: ShapeConversionOptions): RectShape {

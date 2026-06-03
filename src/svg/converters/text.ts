@@ -9,6 +9,8 @@ import { applyMatrixToPoint, decomposeMatrix, identityMatrix, parseTransformToMa
 export interface TextConversionOptions {
   gradientMap?: Map<string, LinearGradient | RadialGradient>
   transformMatrix?: TransformMatrix
+  /** Phase 1.5: defs map used to resolve <textPath href="#id">. */
+  defsMap?: Map<string, Record<string, unknown>>
 }
 
 const TEXT_ASCENT_RATIO = 0.8
@@ -80,10 +82,43 @@ export function convertText(element: Record<string, unknown>, id: string, option
   textElement.width = metrics.width
   textElement.height = metrics.height
 
+  // Phase 1.5: <textPath> support. If the <text> element wraps a
+  // <textPath href="#id"> child, look up the path's `d` from the
+  // defs map and stamp it on the text element.
+  const textPathInfo = resolveTextPath(element, options?.defsMap)
+  if (textPathInfo) {
+    textElement.textPath = textPathInfo
+  }
+
   if (opacity !== undefined) textElement.opacity = opacity
   if (textRotation !== undefined) textElement.textRotation = textRotation
   applyTextMetadata(textElement, element)
   return textElement
+}
+
+/**
+ * Resolve a `<textPath href="#id">` child of a `<text>` element. The
+ * referenced path's `d` attribute is read from the defs map and
+ * returned alongside the href and start offset. Returns `undefined`
+ * if no textPath child is present or the href cannot be resolved.
+ */
+function resolveTextPath(
+  element: Record<string, unknown>,
+  defsMap?: Map<string, Record<string, unknown>>
+): TextElement['textPath'] {
+  if (!defsMap) return undefined
+  const child = element.textPath
+  if (!child || typeof child !== 'object') return undefined
+  const childObj = child as Record<string, unknown>
+  const hrefRaw = getAttr(childObj, 'href') ?? getAttr(childObj, 'xlink:href')
+  if (!hrefRaw) return undefined
+  const href = hrefRaw.replace(/^#/, '')
+  const target = defsMap.get(href)
+  if (!target) return undefined
+  const d = getAttr(target, 'd')
+  if (!d) return undefined
+  const startOffset = parseFloat(getAttr(childObj, 'startOffset') ?? '0') || 0
+  return { href, d, startOffset }
 }
 
 function convertRichText(

@@ -1,5 +1,5 @@
 // Base element types
-import { Transform, ElementId, ElementMeta, Hyperlink } from '../common'
+import { Transform, ElementId, ElementMeta, Hyperlink, LayoutDirective } from '../common'
 import type { VisualEffect } from '../style/effect'
 
 // Import specific element types for union
@@ -10,6 +10,7 @@ import type { LineElement } from './line'
 import type { GroupElement } from './group'
 import type { VideoElement } from './video'
 import type { AudioElement } from './audio'
+import type { IconElement } from './icon'
 
 /**
  * All supported element types
@@ -19,7 +20,15 @@ export type ElementType = 'shape' | 'text' | 'image' | 'line' | 'group' | 'video
 /**
  * Union of all element types
  */
-export type Element = ShapeElement | TextElement | ImageElement | LineElement | GroupElement | VideoElement | AudioElement
+export type Element =
+  | ShapeElement
+  | TextElement
+  | ImageElement
+  | LineElement
+  | GroupElement
+  | VideoElement
+  | AudioElement
+  | IconElement
 
 /**
  * Base properties for all elements
@@ -54,4 +63,17 @@ export interface BaseElement {
 
   // Effect (shadow, blur, glow, etc.)
   effect?: VisualEffect
+
+  // Layout directive (Phase 2+). Default when omitted is `block`.
+  layout?: LayoutDirective
+
+  // Intrinsic dimensions measured by the layout engine (read-only contract;
+  // populated during layout pass, consumed by the renderer).
+  intrinsicWidth?: number
+  intrinsicHeight?: number
+
+  // Phase 1+: id references into the converter's resource maps.
+  clipPathId?: string
+  patternFillId?: string
+  maskId?: string
 }

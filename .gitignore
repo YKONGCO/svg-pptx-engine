@@ -6,3 +6,8 @@ node_modules/
 *.svg
 packages/pptxgenjs/dist/
 packages/pptxgenjs/node_modules/
+svg2pptx-standalone.tar.gz
+svg2pptx-standalone.zip
+dist-npm-publish/
+coverage/
+*.log

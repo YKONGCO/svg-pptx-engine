@@ -1,6 +1,18 @@
 // Common types - coordinates, dimensions, colors, transforms
 
 /**
+ * Layout directive for an element. Determines how the layout engine places
+ * the element relative to its parent and siblings.
+ *
+ * - `block`: stacked vertically in document order (default)
+ * - `inline`: laid out horizontally inside a text-like line, with line wrap
+ * - `flex`: distributed along a main axis with flex sizing
+ * - `grid`: placed in a 2D grid
+ * - `absolute`: positioned by its own x/y, ignored by flow
+ */
+export type LayoutDirective = 'block' | 'inline' | 'flex' | 'grid' | 'absolute'
+
+/**
  * 2D Point
  */
 export interface Point {

@@ -57,6 +57,20 @@ export interface TextElement extends BaseElement {
 
   // Text rotation
   textRotation?: number           // degrees
+
+  // Phase 1.5: text-on-path support. When set, the text is laid out
+  // along the path's `d` string starting at `startOffset` (a length
+  // along the path in user units). PPTX rendering of curved text is
+  // best-effort; the renderer falls back to a single tspan for
+  // non-linear paths.
+  textPath?: {
+    /** Reference id of the <path> in <defs>. */
+    href: string
+    /** Path data (the resolved `d` attribute from the referenced path). */
+    d: string
+    /** Start offset along the path, in user units. */
+    startOffset: number
+  }
 }
 
 /**

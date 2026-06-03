@@ -1,25 +1,31 @@
 {
   "name": "svg-pptx-engine",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "SVG to PPTX converter with intermediate format",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "svg2pptx": "./bin/svg2pptx.js"
+  },
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build:pptxgen && npm run build:mathml && tsc",
+    "build": "npm run build:pptxgen && tsc",
     "build:pptxgen": "npm run build --workspace=pptxgenjs",
-    "build:mathml": "npm run build --workspace=mathml2omml",
     "build:all": "npm run build",
+    "postinstall": "npm run build",
     "convert:svg": "node scripts/svg-to-pptx.js",
     "convert:json": "node scripts/convert-json.js",
     "generate:pptx": "node scripts/generate-pptx.js",
-    "validate:pptx": "node scripts/validate-pptx.js",
     "dev": "tsc --watch",
     "lint": "eslint src --ext .ts",
-    "test": "jest"
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:integration": "jest tests/integration tests/svg/svg-inputs",
+    "test:visual": "jest tests/visual",
+    "package": "bash scripts/build-package.sh"
   },
   "keywords": [
     "svg",
@@ -31,9 +37,13 @@
   "dependencies": {
     "fast-xml-parser": "^5.5.8",
     "jszip": "^3.10.1",
-    "mathml2omml": "workspace:*",
-    "pptxgenjs": "workspace:*"
+    "mathml2omml": "^0.5.0",
+    "pptxgenjs": "file:packages/pptxgenjs"
   },
+  "bundledDependencies": [
+    "pptxgenjs",
+    "mathml2omml"
+  ],
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.1",
     "@rollup/plugin-node-resolve": "^16.0.1",
@@ -44,10 +54,10 @@
     "@typescript-eslint/parser": "^8.57.1",
     "eslint": "^10.0.3",
     "jest": "^30.3.0",
-    "rollup": "^4.24.2",
+    "rollup": "^4.60.0",
     "rollup-plugin-typescript2": "^0.36.0",
-    "tslib": "^2.8.0",
     "ts-jest": "^29.4.6",
+    "tslib": "^2.8.0",
     "typescript": "^5.6.3"
   }
 }

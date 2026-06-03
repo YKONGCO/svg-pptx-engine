@@ -98,7 +98,13 @@ export function getChildElements(element: Record<string, unknown>): Record<strin
   }
 
   const children: Record<string, unknown>[] = []
-  const elementTypes = ['rect', 'circle', 'ellipse', 'path', 'line', 'polygon', 'polyline', 'text', 'g', 'svg']
+  const elementTypes = [
+    'rect', 'circle', 'ellipse', 'path', 'line',
+    'polygon', 'polyline', 'text', 'g', 'svg',
+    // Phase 1: defs references and animation snapshots
+    'use', 'symbol', 'textPath', 'switch',
+    'set', 'animate', 'animateTransform', 'animateMotion'
+  ]
 
   for (const key of Object.keys(element)) {
     if (key === 'defs') continue

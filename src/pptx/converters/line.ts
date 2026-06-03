@@ -7,7 +7,7 @@
 // - PPTX line shape uses bounding box (x, y, w, h) with line connector
 
 import PptxGenJS from 'pptxgenjs'
-import type { LineElement, ArrowMarker } from '../../sif/types/elements/line'
+import type { LineElement, ArrowMarker, ArrowHeadType } from '../../sif/types/elements/line'
 import type { Stroke } from '../../sif/types/style/stroke'
 import { pxToInch, pxToPt, arrowTypeToPptx } from '../utils'
 import { convertPathPointsForPptx } from '../utils/path-to-pptx'
@@ -54,14 +54,16 @@ export function convertLine(
   // Handle arrow markers if present
   // Note: pptxgenjs supports beginArrowType and endArrowType for line shapes
   // pptxgenjs uses 'lg', 'sm', 'med' for arrow sizes
-  if (line.markerEnd) {
+  const markerEndType = resolveMarkerAttrType(line.markerEnd)
+  if (markerEndType) {
     // markerEnd maps to endArrowType
-    lineOptions.endArrowType = arrowTypeToPptx(line.markerEnd) ?? 'arrow'
+    lineOptions.endArrowType = arrowTypeToPptx(markerEndType) ?? 'arrow'
   }
 
-  if (line.markerStart) {
+  const markerStartType = resolveMarkerAttrType(line.markerStart)
+  if (markerStartType) {
     // markerStart maps to beginArrowType
-    lineOptions.beginArrowType = arrowTypeToPptx(line.markerStart) ?? 'arrow'
+    lineOptions.beginArrowType = arrowTypeToPptx(markerStartType) ?? 'arrow'
   }
 
   const localX1 = x1 - minX
@@ -117,4 +119,18 @@ export function convertStroke(stroke: Stroke): PptxGenJS.ShapeLineProps {
  */
 export function convertArrowMarker(marker: ArrowMarker): PptxGenJS.ShapeLineProps['endArrowType'] {
   return arrowTypeToPptx(marker.type)
+}
+
+/**
+ * Normalize a `marker-start` / `marker-end` attribute on a LineElement
+ * to a bare arrow-type string for pptxgenjs. Accepts both the
+ * structured ArrowMarker (Phase 1.2) and the legacy bare-string form
+ * (used by SIF JSON fixtures and direct SIF consumers).
+ */
+function resolveMarkerAttrType(
+  attr: ArrowMarker | ArrowHeadType | string | undefined
+): ArrowHeadType | undefined {
+  if (!attr) return undefined
+  if (typeof attr === 'string') return attr as ArrowHeadType
+  return attr.type
 }
