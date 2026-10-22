@@ -1,50 +1,169 @@
 // Gradient converter - converts SVG gradients to SIF Gradient types
-import type { LinearGradient, RadialGradient, GradientStop } from '../../sif/types/style/gradient'
+import type { LinearGradient, RadialGradient, GradientStop, GradientTransform, GradientSpreadMethod } from '../../sif/types/style/gradient'
 import { parseColor, parseOpacity } from './color'
+import { parseTransformToMatrix, applyMatrixToPoint } from './group'
+
+/** Optional resolver for `xlink:href` / `href` references on gradients.
+ *  Pass `defsMap` so the converter can chase a chain of parent gradients
+ *  and inherit stops + endpoint attributes per SVG 2 §13.2. */
+export interface GradientConvertOptions {
+  defsMap?: Map<string, Record<string, unknown>>
+}
 
 export function convertLinearGradient(
   gradient: Record<string, unknown>,
-  _id: string
+  _id: string,
+  options?: GradientConvertOptions
 ): LinearGradient {
-  const stops = extractGradientStops(gradient)
-  const x1 = parsePercent(getAttr(gradient, 'x1') || '0%')
-  const y1 = parsePercent(getAttr(gradient, 'y1') || '0%')
-  const x2 = parsePercent(getAttr(gradient, 'x2') || '100%')
-  const y2 = parsePercent(getAttr(gradient, 'y2') || '0%')
+  const resolved = resolveGradientChain(gradient, options?.defsMap)
+  const stops = extractGradientStops(resolved)
+  const rawX1 = parsePercent(getAttr(resolved, 'x1') || '0%')
+  const rawY1 = parsePercent(getAttr(resolved, 'y1') || '0%')
+  const rawX2 = parsePercent(getAttr(resolved, 'x2') || '100%')
+  const rawY2 = parsePercent(getAttr(resolved, 'y2') || '0%')
+  const transform = parseGradientTransform(getAttr(resolved, 'gradientTransform'))
+  const spreadMethod = parseSpreadMethod(getAttr(resolved, 'spreadMethod'))
 
-  return {
+  // When `gradientTransform` is set, the raw (x1, y1) / (x2, y2)
+  // endpoints live in the gradient's own local space. We pre-bake
+  // the transform into the endpoints so the renderer can stay
+  // oblivious to gradientTransform (it just reads x1/y1/x2/y2).
+  const p1 = applyMatrixToPoint(rawX1, rawY1, transform ?? [1, 0, 0, 1, 0, 0])
+  const p2 = applyMatrixToPoint(rawX2, rawY2, transform ?? [1, 0, 0, 1, 0, 0])
+
+  const result: LinearGradient = {
     type: 'linear',
     stops,
-    angle: calculateAngleFromCoords(x1, y1, x2, y2),
-    x1,
-    y1,
-    x2,
-    y2
+    angle: calculateAngleFromCoords(p1.x, p1.y, p2.x, p2.y),
+    x1: p1.x,
+    y1: p1.y,
+    x2: p2.x,
+    y2: p2.y
   }
+  if (spreadMethod) result.spreadMethod = spreadMethod
+  return result
 }
 
 export function convertRadialGradient(
   gradient: Record<string, unknown>,
-  _id: string
+  _id: string,
+  options?: GradientConvertOptions
 ): RadialGradient {
-  const stops = extractGradientStops(gradient)
-  const cx = parsePercent(getAttr(gradient, 'cx') || '50%')
-  const cy = parsePercent(getAttr(gradient, 'cy') || '50%')
-  const fx = parsePercent(getAttr(gradient, 'fx') || getAttr(gradient, 'cx') || '50%')
-  const fy = parsePercent(getAttr(gradient, 'fy') || getAttr(gradient, 'cy') || '50%')
-  const fr = parsePercent(getAttr(gradient, 'fr') || '0%')
-  const r = parsePercent(getAttr(gradient, 'r') || '50%')
+  const resolved = resolveGradientChain(gradient, options?.defsMap)
+  const stops = extractGradientStops(resolved)
+  const rawCx = parsePercent(getAttr(resolved, 'cx') || '50%')
+  const rawCy = parsePercent(getAttr(resolved, 'cy') || '50%')
+  const rawFx = parsePercent(getAttr(resolved, 'fx') || getAttr(resolved, 'cx') || '50%')
+  const rawFy = parsePercent(getAttr(resolved, 'fy') || getAttr(resolved, 'cy') || '50%')
+  const fr = parsePercent(getAttr(resolved, 'fr') || '0%')
+  const r = parsePercent(getAttr(resolved, 'r') || '50%')
+  const transform = parseGradientTransform(getAttr(resolved, 'gradientTransform'))
+  const spreadMethod = parseSpreadMethod(getAttr(resolved, 'spreadMethod'))
 
-  return {
+  const center = applyMatrixToPoint(rawCx, rawCy, transform ?? [1, 0, 0, 1, 0, 0])
+  const focal = applyMatrixToPoint(rawFx, rawFy, transform ?? [1, 0, 0, 1, 0, 0])
+
+  const result: RadialGradient = {
     type: 'radial',
     stops,
-    x1: fx,
-    y1: fy,
-    x2: cx,
-    y2: cy,
+    x1: focal.x,
+    y1: focal.y,
+    x2: center.x,
+    y2: center.y,
     r1: fr,
     r2: r
   }
+  if (spreadMethod) result.spreadMethod = spreadMethod
+  return result
+}
+
+/**
+ * Phase 0.2B: Resolve an `xlink:href` / `href` reference chain on a
+ * gradient. SVG 2 §13.2: a gradient that references another gradient
+ * inherits its stops *and* any geometric / spreadMethod attributes the
+ * child does not set itself.
+ *
+ * The returned record is a *merged* view: child attributes win; parent
+ * attributes (and parent's `stop` children) fill in the gaps. Cycles
+ * are guarded with a visited set.
+ */
+function resolveGradientChain(
+  gradient: Record<string, unknown>,
+  defsMap?: Map<string, Record<string, unknown>>
+): Record<string, unknown> {
+  if (!defsMap) return gradient
+  const visited = new Set<string>()
+  let current: Record<string, unknown> = gradient
+  let mergedAttrs: Record<string, unknown> = { ...gradient }
+  // Track whether we've seen any stops in the chain — child stops win
+  // entirely (no per-stop merge); only fall back to parent stops when
+  // the child gradient has no `stop` of its own.
+  let hasStops = hasOwnStops(gradient)
+
+  while (true) {
+    const href = getGradientHref(current)
+    if (!href) break
+    const cleaned = href.replace(/^#/, '')
+    if (visited.has(cleaned)) break
+    visited.add(cleaned)
+
+    const parent = defsMap.get(cleaned)
+    if (!parent) break
+    current = parent
+
+    // Fill in missing attributes from the parent (child wins).
+    for (const key of Object.keys(parent)) {
+      if (key in mergedAttrs) continue
+      // Don't inherit the href itself or the id.
+      if (key === '@_href' || key === '@_xlink:href' || key === '@_id') continue
+      mergedAttrs[key] = parent[key]
+    }
+
+    // Inherit stops only when the child has none of its own.
+    if (!hasStops && hasOwnStops(parent)) {
+      mergedAttrs.stop = parent.stop
+      hasStops = true
+    }
+  }
+
+  return mergedAttrs
+}
+
+function hasOwnStops(gradient: Record<string, unknown>): boolean {
+  const stops = gradient.stop
+  if (Array.isArray(stops)) return stops.length > 0
+  return Boolean(stops)
+}
+
+function getGradientHref(gradient: Record<string, unknown>): string | undefined {
+  const direct = getAttr(gradient, 'href')
+  if (direct) return direct
+  const xlink = getAttr(gradient, 'xlink:href')
+  if (xlink) return xlink
+  return undefined
+}
+
+/** Parse `gradientTransform` into a 2D affine matrix. Returns
+ *  `undefined` when the attribute is missing or identity so we
+ *  don't pay the cost of carrying the field through the renderer. */
+function parseGradientTransform(value: string | undefined): GradientTransform | undefined {
+  if (!value?.trim()) return undefined
+  const matrix = parseTransformToMatrix(value)
+  // Identity: don't store, save downstream renderers the check.
+  if (matrix[0] === 1 && matrix[1] === 0 && matrix[2] === 0 && matrix[3] === 1 && matrix[4] === 0 && matrix[5] === 0) {
+    return undefined
+  }
+  return matrix
+}
+
+/**
+ * Phase 0.2B: SVG `spreadMethod` is one of `pad` / `reflect` / `repeat`.
+ * Returns `undefined` for the default `pad` so the SIF stays compact —
+ * renderers treat absence as `pad`.
+ */
+function parseSpreadMethod(value: string | undefined): GradientSpreadMethod | undefined {
+  if (value === 'reflect' || value === 'repeat') return value
+  return undefined
 }
 
 export function isLinearGradientDef(gradient: Record<string, unknown>): boolean {

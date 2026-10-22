@@ -1,7 +1,7 @@
 // Slide Converter - Converts SIF slides to pptxgenjs slides
 
 import PptxGenJS from 'pptxgenjs'
-import type { Slide, SlideBackground, SlideTransition } from '../../sif/types/document'
+import type { Slide, SlideBackground, SlideTransition, SlideResources } from '../../sif/types/document'
 import type { Element } from '../../sif/types/elements/base'
 import type { Fill, SolidFill } from '../../sif/types/style/fill'
 import { convertFill } from './shape'
@@ -57,10 +57,16 @@ export function getElementsInRenderOrder(elements: Element[]): Element[] {
 }
 
 /**
- * Convert element to pptxgenjs format
+ * Convert element to pptxgenjs format.
+ *
+ * `resources` (Phase 0.2A) carries clipPath / mask / pattern
+ * defs the SVG `<defs>` declared. Shape elements with a
+ * `clipPathId` / `maskId` / `patternFillId` resolve through this
+ * map.
  */
 export function convertElement(
-  element: Element
+  element: Element,
+  resources?: SlideResources
 ): { type: 'shape' | 'text' | 'formula' | 'fragments' | 'image' | 'line' | 'video' | 'audio'; data: any } | null {
   if (element.visible === false) {
     return null
@@ -68,7 +74,7 @@ export function convertElement(
 
   switch (element.type) {
     case 'shape': {
-      const converted = convertShape(element as ShapeElement)
+      const converted = convertShape(element as ShapeElement, undefined, resources)
       return { type: 'shape', data: converted }
     }
     case 'text': {
@@ -105,7 +111,8 @@ export function convertElement(
  * Convert group elements to pptxgenjs format
  */
 export function convertGroupElements(
-  group: GroupElement
+  group: GroupElement,
+  resources?: SlideResources
 ): ConvertedGroupChild[] {
-  return convertGroup(group)
+  return convertGroup(group, resources)
 }

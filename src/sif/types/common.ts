@@ -147,6 +147,13 @@ export interface ElementMeta {
   source?: string  // source file or origin
   description?: string
   tags?: string[]
+  /**
+   * Phase 3.2.1: when true, the layout pass's overlap detector
+   * ignores this element even if it visually overlaps a sibling.
+   * Use for intentionally-stacked decoration (e.g. a text shadow
+   * under a text body).
+   */
+  allowOverlap?: boolean
 }
 
 /**

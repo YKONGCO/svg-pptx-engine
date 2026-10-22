@@ -1,6 +1,8 @@
 // Text element types
 import { BaseElement } from './base'
 import { Fill } from '../style/fill'
+import { Stroke } from '../style/stroke'
+import { VisualEffect } from '../style/effect'
 
 export type FontWeight = 'normal' | 'bold' | 'lighter' | 'bolder' | number
 export type FontStyle = 'normal' | 'italic' | 'oblique'
@@ -40,6 +42,16 @@ export interface TextElement extends BaseElement {
   // Text color (uses fill)
   fill: Fill
 
+  /**
+   * Optional outline (text stroke). SVG allows `stroke` on `<text>` /
+   * `<tspan>` for hollow/outlined text. PPTX's equivalent is the
+   * `<a:rPr><a:ln/></a:rPr>` run-property line; pptxgenjs exposes this
+   * via `TextPropsOptions.outline: { color, size }`. We carry the
+   * full SIF Stroke so the converter can pick color/width; lineCap /
+   * lineJoin are not surfaced (PPTX text outline is single-segment).
+   */
+  stroke?: Stroke
+
   // Alignment
   textAlign?: TextAlign
   textAnchor?: TextAnchor         // text alignment anchor within the text box
@@ -58,6 +70,22 @@ export interface TextElement extends BaseElement {
   // Text rotation
   textRotation?: number           // degrees
 
+  /**
+   * Phase 0.2B: `textLength` constrains the rendered width of the
+   * `<text>` element. When combined with `lengthAdjust`, the renderer
+   * stretches glyphs (`spacingAndGlyphs`) or only inter-glyph spacing
+   * (`spacing`, the default) to hit the target width.
+   */
+  textLength?: number             // pixels
+  lengthAdjust?: 'spacing' | 'spacingAndGlyphs'
+
+  /**
+   * Phase 0.2B: SVG `xml:space="preserve"` — keep all whitespace inside
+   * `<text>` / `<tspan>` verbatim (no collapsing of consecutive spaces,
+   * no trimming of leading / trailing whitespace).
+   */
+  preserveWhitespace?: boolean
+
   // Phase 1.5: text-on-path support. When set, the text is laid out
   // along the path's `d` string starting at `startOffset` (a length
   // along the path in user units). PPTX rendering of curved text is
@@ -71,6 +99,16 @@ export interface TextElement extends BaseElement {
     /** Start offset along the path, in user units. */
     startOffset: number
   }
+
+  /**
+   * Visual effect applied to the text (drop shadow, glow, ...).
+   * Mirrors the `effect` field on `BaseElement` but lives on
+   * `TextElement` too because PPTX users often want a text-level
+   * drop shadow (e.g. "SHADOW" labels in the 05-filters fixtures)
+   * and pptxgenjs's `TextPropsOptions.shadow` is the natural place
+   * to emit it. Blur / luminance-matrix effects are dropped.
+   */
+  effect?: VisualEffect
 }
 
 /**
@@ -84,6 +122,28 @@ export interface TextRun {
   fontStyle?: FontStyle
   fill?: Fill
   decoration?: TextDecorationStyle
+  /**
+   * Phase 0.2B: per-run rotation in degrees (SVG `<tspan rotate>`).
+   * SVG allows a per-character list (`rotate="0 45 90"`); we collapse
+   * to the first finite value so downstream renderers only need to
+   * carry a single number.
+   */
+  rotate?: number
+  /**
+   * Phase 0.2B: SVG `baseline-shift` on `<tspan>`. `super` / `sub` map
+   * to PPTX superscript / subscript; a numeric value is interpreted as
+   * a percentage of the em (positive = up, negative = down).
+   */
+  baselineShift?: 'super' | 'sub' | number
+  /**
+   * Phase 0.2B: SVG `textLength` on `<tspan>` — forces the run to render
+   * at the given pixel width. The renderer converts to PPTX `charSpacing`
+   * to approximate the effect (PPTX has no native textLength).
+   */
+  textLength?: number
+  lengthAdjust?: 'spacing' | 'spacingAndGlyphs'
+  /** Phase 0.2B: per-run `xml:space="preserve"`. */
+  preserveWhitespace?: boolean
 }
 
 /**
@@ -98,10 +158,19 @@ export interface RichTextElement extends BaseElement {
   fontFamily: string
   fontSize: number
   fill: Fill
+  /** See {@link TextElement.stroke}. */
+  stroke?: Stroke
+  /** See {@link TextElement.effect}. */
+  effect?: VisualEffect
 
   // Alignment
   textAlign?: TextAlign
   textAnchor?: TextAnchor
   verticalAlign?: VerticalAlign
   lineHeight?: number
+
+  /** Phase 0.2B: see {@link TextElement.textLength}. */
+  textLength?: number
+  lengthAdjust?: 'spacing' | 'spacingAndGlyphs'
+  preserveWhitespace?: boolean
 }

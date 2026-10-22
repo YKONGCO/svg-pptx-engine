@@ -252,9 +252,15 @@ export function parsePathToPoints(d: string): PathPoint[] {
       }
 
       case 'Z': {
+        // The outer loop already advanced `i` past the `Z` token
+        // before entering the switch. `Z` has no arguments, so we
+        // must NOT increment `i` again — doing so would skip the
+        // next command (e.g. a following `M` that begins a new
+        // subpath). This was the cause of donut/evenodd shapes
+        // collapsing into a single-subpath outline because the
+        // inner subpath's `M` was being silently dropped.
         points.push({ close: true, type: 'Z' })
         current = { ...subpathStart }
-        i++  // Z takes no arguments
         break
       }
 

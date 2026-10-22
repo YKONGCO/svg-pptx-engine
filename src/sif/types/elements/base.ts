@@ -76,4 +76,30 @@ export interface BaseElement {
   clipPathId?: string
   patternFillId?: string
   maskId?: string
+
+  /**
+   * Phase 1+: resolved absolute clipPath rect, in pixels. Stamped at
+   * SVG conversion time after the element's transform matrix is
+   * applied to the `<clipPath>` def. When present, the PPTX layer
+   * uses these coordinates directly without re-deriving the
+   * intersection from the raw clipPath def (which is in the
+   * element's local user space and would not match the element's
+   * screen-space bounding box). For rotated clipPath rects the
+   * value is the axis-aligned bounding box of the rotated shape —
+   * PPTX cannot represent rotated clip regions natively, so this
+   * is a conservative approximation.
+   */
+  clipPathRect?: { x: number; y: number; width: number; height: number }
+
+  /**
+   * Phase 1: per-element baseline metrics (in pixels). When set, the
+   * PPTX layer uses these instead of guessing the ascent / descent
+   * from the font size alone. `ascent` is the distance from the
+   * element's top edge to its text baseline; `descent` is the
+   * distance from the baseline to the bottom edge. The sum of
+   * ascent + descent typically exceeds `height` (the box is
+   * padded for line-leading), so callers should treat these as
+   * guides rather than hard bounds.
+   */
+  baseline?: { ascent: number; descent: number }
 }

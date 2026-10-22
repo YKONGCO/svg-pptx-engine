@@ -11,14 +11,21 @@ import type { ImageElement } from '../sif/types/elements/image'
 import type { VideoElement } from '../sif/types/elements/video'
 import type { AudioElement } from '../sif/types/elements/audio'
 import { parseSVG, getSvgRoot, getDefs, getChildElements, getAttr, copyElementMetadata } from './parser'
-import { convertRect, convertCircle, convertEllipse, convertPath, convertLine, convertPolygon, convertPolyline, convertMarkedLine, convertMarkedPolyline } from './converters/shape'
+import { convertRect, convertCircle, convertEllipse, convertPath, convertLine, convertPolygon, convertPolyline, convertMarkedLine, convertMarkedPolyline, computePathBounds, computePointsBounds } from './converters/shape'
 import { convertText } from './converters/text'
-import { createGroup, identityMatrix, multiplyMatrices, parseTransformToMatrix, type TransformMatrix } from './converters/group'
+import { convertForeignObject } from './converters/foreignObject'
+import { createGroup, identityMatrix, multiplyMatrices, parseTransformToMatrix, applyMatrixToBounds, applyMatrixToShapeBounds, decomposeMatrix, type TransformMatrix } from './converters/group'
 import { convertLinearGradient, convertRadialGradient, isLinearGradientDef } from './converters/gradient'
 import { convertFilterDef, resolveFilterEffect } from './converters/filter'
 import { convertImage, convertVideo, convertAudio } from './converters/media'
 import { buildMarkerMap } from './converters/marker'
+import { parsePathToPoints } from './utils/path-parser'
 import { applyAnimationSnapshot, collectAnimations } from './converters/animation'
+import { convertPattern, looksLikePattern, type PatternTemplate } from './converters/pattern'
+import { convertClipPath, looksLikeClipPath, type ClipPathResource } from './converters/clip-path'
+import { convertMask, looksLikeMask, type MaskResource } from './converters/mask'
+import { pass } from '../layout'
+import { DEFAULT_FONT_BRIDGE } from '../utils/font'
 
 let elementIdCounter = 0
 
@@ -37,6 +44,17 @@ export interface SvgToSifOptions {
   defaultFontFamily?: string
   /** Base directory for resolving relative media paths (e.g., './image.png') */
   baseDir?: string
+  /**
+   * Phase 2: layout engine switch.
+   *  - 'auto' (default) — run the layout pass; `<g layout="…">` containers
+   *    reposition their children.
+   *  - 'off' — skip the layout pass; every element keeps the coordinates
+   *    the SVG attributes specified. Useful for v1.0 regression tests.
+   *
+   * Note: named `useLayout` to avoid clashing with PptxGeneratorOptions.layout
+   * (which is a pptxgenjs slide-layout name).
+   */
+  useLayout?: 'auto' | 'off'
 }
 
 interface ConversionContext {
@@ -46,6 +64,8 @@ interface ConversionContext {
   opacity: number
   gradientMap: Map<string, LinearGradient | RadialGradient>
   filterMap: Map<string, FilterTemplate>
+  /** Phase 0.2A: id → PatternTemplate map for `<pattern>` defs. */
+  patternMap: Map<string, PatternTemplate>
   /** Phase 1.2: id → ArrowMarker map for `<marker>` definitions. */
   markerMap: Map<string, import('../sif/types/elements/line').ArrowMarker>
   /**
@@ -81,13 +101,35 @@ const PRESENTATION_ATTRS = [
 ]
 
 export function svgToSif(svgString: string, options?: SvgToSifOptions): Element[] {
+  return svgToSifWithDefs(svgString, options).elements
+}
+
+/**
+ * Same as {@link svgToSif} but additionally returns the resolved
+ * `<pattern>` / `<clipPath>` / `<mask>` def maps. The PPTX layer
+ * needs the pattern tile geometry + children in order to rasterise
+ * the tile to a PNG and use it as a repeating image fill; the
+ * element-level `patternFillId` / `clipPathId` / `maskId` are just
+ * pointers into these maps.
+ */
+export interface SvgToSifResult {
+  elements: Element[]
+  defs: {
+    patterns: Map<string, PatternTemplate>
+    clipPaths: Map<string, ClipPathResource>
+    masks: Map<string, MaskResource>
+  }
+}
+
+export function svgToSifWithDefs(svgString: string, options?: SvgToSifOptions): SvgToSifResult {
   resetIdCounter()
 
   const opts: Required<SvgToSifOptions> = {
     preserveGroups: true,
     includeDefs: true,
-    defaultFontFamily: 'sans-serif',
+    defaultFontFamily: DEFAULT_FONT_BRIDGE.web,
     baseDir: '',
+    useLayout: 'auto',
     ...options
   }
 
@@ -101,7 +143,10 @@ export function svgToSif(svgString: string, options?: SvgToSifOptions): Element[
   const defs = getDefs(svgRoot)
   const gradientMap = buildGradientMap(defs)
   const markerMap = buildMarkerMap(defs)
-  const context: ConversionContext = {
+  // Pattern defs are resolved in a second pass once the base context
+  // exists, because building a pattern requires recursively converting
+  // its children with the same context the outer converter uses.
+  const baseContext: ConversionContext = {
     transformMatrix: identityMatrix(),
     inheritedStyles: {
       fill: '#000000',
@@ -111,15 +156,20 @@ export function svgToSif(svgString: string, options?: SvgToSifOptions): Element[
     opacity: 1,
     gradientMap,
     filterMap: buildFilterMap(defs),
+    patternMap: new Map(),
     markerMap,
     defsMap: defs,
     options: opts,
     baseDir: opts.baseDir
   }
+  const patternMap = buildPatternMap(defs, baseContext)
+  baseContext.patternMap = patternMap
+  const clipPathMap = buildClipPathMap(defs)
+  const maskMap = buildMaskMap(defs, gradientMap)
 
   const elements: Element[] = []
   for (const child of getChildElements(svgRoot)) {
-    const converted = convertElement(child, context)
+    const converted = convertElement(child, baseContext)
     if (!converted) continue
 
     if (!opts.preserveGroups && converted.type === 'group') {
@@ -129,15 +179,31 @@ export function svgToSif(svgString: string, options?: SvgToSifOptions): Element[
     }
   }
 
-  return elements
+  // Phase 2 (layout engine): by default we run the layout pass so
+  // `<g layout="…">` containers reposition their children. Callers
+  // can opt out with `options.useLayout = 'off'` to get the v1.0
+  // "coordinate passthrough" behavior.
+  const result = opts.useLayout !== 'off' ? pass(elements, { enabled: true, warnOnOverlap: false }) : elements
+  return {
+    elements: Array.isArray(result) ? result : result.elements,
+    defs: { patterns: patternMap, clipPaths: clipPathMap, masks: maskMap }
+  }
 }
 
 function buildGradientMap(defs: Map<string, Record<string, unknown>>): Map<string, LinearGradient | RadialGradient> {
   const gradientMap = new Map<string, LinearGradient | RadialGradient>()
 
   for (const [id, def] of defs) {
-    if (!looksLikeGradient(def)) continue
-    gradientMap.set(id, isLinearGradientDef(def) ? convertLinearGradient(def, id) : convertRadialGradient(def, id))
+    if (!looksLikeGradient(def, defs)) continue
+    // Phase 0.2B: pass the full defs map so the gradient converter can
+    // chase `xlink:href` chains and inherit stops + endpoints from the
+    // referenced parent gradient (SVG 2 §13.2).
+    gradientMap.set(
+      id,
+      isLinearGradientDef(def)
+        ? convertLinearGradient(def, id, { defsMap: defs })
+        : convertRadialGradient(def, id, { defsMap: defs })
+    )
   }
 
   return gradientMap
@@ -153,6 +219,54 @@ function buildFilterMap(defs: Map<string, Record<string, unknown>>): Map<string,
     }
   }
   return filterMap
+}
+
+/**
+ * Build a `PatternTemplate` map for each `<pattern>` def. Each
+ * pattern's children are recursively converted through `convertElement`
+ * with the supplied context so they pick up the same defs, gradients
+ * and filters the outer SVG does.
+ */
+function buildPatternMap(
+  defs: Map<string, Record<string, unknown>>,
+  context: ConversionContext
+): Map<string, PatternTemplate> {
+  const patternMap = new Map<string, PatternTemplate>()
+  for (const [id, def] of defs) {
+    if (!looksLikePattern(def)) continue
+    const convertChild = (raw: Record<string, unknown>) => convertElement(raw, context)
+    const pattern = convertPattern(def, id, convertChild)
+    patternMap.set(id, pattern)
+  }
+  return patternMap
+}
+
+/**
+ * Build a `ClipPathResource` map for each `<clipPath>` def. Currently
+ * only single-rect clipPaths land in the map; anything more complex
+ * is dropped (with a warn) so the rest of the document still renders.
+ */
+function buildClipPathMap(defs: Map<string, Record<string, unknown>>): Map<string, ClipPathResource> {
+  const map = new Map<string, ClipPathResource>()
+  for (const [id, def] of defs) {
+    if (!looksLikeClipPath(def)) continue
+    const resource = convertClipPath(def, id)
+    if (resource) map.set(id, resource)
+  }
+  return map
+}
+
+function buildMaskMap(
+  defs: Map<string, Record<string, unknown>>,
+  gradientMap: Map<string, LinearGradient | RadialGradient>
+): Map<string, MaskResource> {
+  const map = new Map<string, MaskResource>()
+  for (const [id, def] of defs) {
+    if (!looksLikeMask(def)) continue
+    const resource = convertMask(def, id, gradientMap)
+    if (resource) map.set(id, resource)
+  }
+  return map
 }
 
 function convertElement(element: Record<string, unknown>, context: ConversionContext): Element | undefined {
@@ -212,6 +326,17 @@ function convertElement(element: Record<string, unknown>, context: ConversionCon
     case 'g':
     case 'svg':
       return convertGroupElement(prepared, nextContext)
+    case 'foreignObject': {
+      // Phase 0.2B: render a `<foreignObject>` as a SIF RichTextElement.
+      // The whitelist (`h1-h6 / p / span / b / i / u / em / strong / br`)
+      // covers the common "labelled callout" case browsers handle natively.
+      const richText = convertForeignObject(prepared, {
+        generateId,
+        transformMatrix: nextContext.transformMatrix,
+      })
+      if (!richText) return undefined
+      return applyElementContext(richText, nextContext, prepared)
+    }
     default:
       return undefined
   }
@@ -245,8 +370,67 @@ function convertMarkedPolylineElement(node: Record<string, unknown>, context: Co
 }
 
 function convertGroupElement(node: Record<string, unknown>, context: ConversionContext): Element | undefined {
-  const children = getChildElements(node)
-    .map(child => convertElement(child, context))
+  // Phase 1.3.2: hoist the group's clip-path / mask down to each
+  // child *before* conversion, so the child-level absolute clip
+  // rect can be resolved against the child's own transform matrix
+  // (which is already applied by the time the child is
+  // converted). Without this, a group with clip-path renders its
+  // children unclipped because only the group itself carries the
+  // id and the PPTX layer's `applyClipPathAndMask` runs per-child
+  // — not per-group.
+  const groupClipPathRef = parseResourceId(getAttr(node, 'clip-path'))
+  const groupMaskRef = parseResourceId(getAttr(node, 'mask'))
+  const childrenSource = getChildElements(node)
+  if (groupClipPathRef || groupMaskRef) {
+    for (const child of childrenSource) {
+      if (!child || typeof child !== 'object') continue
+      // Each child is shaped like `{ <tagName>: { '@_attr': ... } }`
+      // — find the inner attribute record and stamp the parent's
+      // clip-path / mask onto it (unless the child already carries
+      // its own). Setting it on the outer wrapper is invisible to
+      // `getAttr` because the parser keys attributes by `@_*`.
+      const tagKey = Object.keys(child).find(k => !k.startsWith('@_') && k !== '#text' && k !== '#cdata-section')
+      if (!tagKey) continue
+      const inner = child[tagKey] as Record<string, unknown> | undefined
+      if (!inner || typeof inner !== 'object') continue
+      if (groupClipPathRef && !('@_clip-path' in inner)) {
+        inner['@_clip-path'] = `url(#${groupClipPathRef})`
+      }
+      if (groupMaskRef && !('@_mask' in inner)) {
+        inner['@_mask'] = `url(#${groupMaskRef})`
+      }
+    }
+  }
+
+  // Phase 3.x: when this group is a layout container (`<g
+  // layout="…">`), the layout flow will reposition its children
+  // based on flex / block / grid / inline rules. If we leave the
+  // parent transform baked into the children (the normal SIF
+  // design), the layout flow's `target - child.x` delta undoes
+  // that translate — the layouts appear shifted by the parent
+  // transform's negation. To avoid this, use a fresh transform
+  // context for the children so the layout flow operates on
+  // flex-local coordinates; the parent translate is captured on
+  // the group itself and re-applied by `flattenToAbsolute`.
+  const layoutAttr = getAttr(node, 'layout')
+  const isLayoutGroup = layoutAttr === 'block' || layoutAttr === 'flex' ||
+    layoutAttr === 'grid' || layoutAttr === 'inline' || layoutAttr === 'absolute'
+  const childContext: ConversionContext = isLayoutGroup
+    ? {
+        ...context,
+        // Reset the accumulated transform matrix for the layout
+        // group's children. The layout group itself typically has
+        // no SVG transform, but if it did, we'd re-apply it on
+        // top of the (now reset) matrix so the children's
+        // positions are still relative to the layout group's
+        // own coordinate system. The parent translate is captured
+        // on the group below.
+        transformMatrix: parseTransformToMatrix(getAttr(node, 'transform'))
+      }
+    : context
+
+  const children = childrenSource
+    .map(child => convertElement(child, childContext))
     .filter(Boolean) as Element[]
 
   if (children.length === 0) {
@@ -265,13 +449,29 @@ function convertGroupElement(node: Record<string, unknown>, context: ConversionC
   const group = createGroup(node, children, generateId('group'))
   group.visible = context.visible
 
-  // Phase 1.3: group-level clip-path / mask reference. The renderer
-  // applies the mask to the group as a whole, so we stamp the id on
-  // the group element itself rather than on each child.
-  const clipPathRef = parseResourceId(getAttr(node, 'clip-path'))
-  if (clipPathRef) (group as GroupElement & { clipPathId?: string }).clipPathId = clipPathRef
-  const maskRef = parseResourceId(getAttr(node, 'mask'))
-  if (maskRef) (group as GroupElement & { maskId?: string }).maskId = maskRef
+  // Capture the parent transform onto a layout group so the layout
+  // pass can re-apply it. The SIF design says groups don't carry
+  // transforms, but this is a controlled deviation for layout
+  // groups (see GroupElement.transform doc).
+  if (isLayoutGroup) {
+    const inheritedMatrix = context.transformMatrix
+    const ownMatrix = parseTransformToMatrix(getAttr(node, 'transform'))
+    const composed = multiplyMatrices(inheritedMatrix, ownMatrix)
+    const decomposed = decomposeMatrix(composed)
+    if (Math.abs(decomposed.translateX) > 1e-9 || Math.abs(decomposed.translateY) > 1e-9) {
+      ;(group as GroupElement & { transform?: { translateX?: number; translateY?: number } }).transform = {
+        translateX: decomposed.translateX,
+        translateY: decomposed.translateY
+      }
+    }
+  }
+
+  // Phase 1.3: group-level clip-path / mask reference. Stamping
+  // the id on the group itself is still useful for the layout
+  // pass / round-tripping, even though the children already
+  // inherited the same id during conversion above.
+  if (groupClipPathRef) (group as GroupElement & { clipPathId?: string }).clipPathId = groupClipPathRef
+  if (groupMaskRef) (group as GroupElement & { maskId?: string }).maskId = groupMaskRef
 
   return group
 }
@@ -347,7 +547,7 @@ function convertUseElement(
 
   // Shape: translate + optional non-uniform scale.
   if (targetTag && SHAPE_TARGET_TAGS.has(targetTag)) {
-    const matrix = buildShapeOverrideMatrix(target, targetTag, useX, useY, useW, useH)
+    const matrix = buildShapeOverrideMatrix(target, targetTag, useX, useY, useW, useH, node)
     const nextContext: ConversionContext = {
       ...context,
       transformMatrix: multiplyMatrices(context.transformMatrix, matrix),
@@ -442,7 +642,8 @@ function buildShapeOverrideMatrix(
   useX: number,
   useY: number,
   useW: number | undefined,
-  useH: number | undefined
+  useH: number | undefined,
+  useNode?: Record<string, unknown>
 ): TransformMatrix {
   let originX = 0
   let originY = 0
@@ -479,6 +680,57 @@ function buildShapeOverrideMatrix(
       const ry = parseNumeric(target, 'ry', 0)
       if (ry > 0) scaleY = useH / (2 * ry)
     }
+  } else if (targetTag === 'path') {
+    // Phase 0.2B: re-coordinate path bbox so the use's x/y/w/h overrides
+    // place the path's bounding box at (useX, useY) with the requested
+    // size. SVG 2 says w/h on `<use>` is symbol-only, but supporting it
+    // for path matches author expectations for "stamp this glyph at
+    // this size" patterns.
+    //
+    // v4: do NOT re-base the geometry onto (useX, useY) when the use
+    // didn't supply x/y — a path's `M 30 80 Q 130 0 250 80` is already
+    // at (30, 80) in its parent's coordinate system. Subtracting the
+    // path's bbox.x here used to drag the curve 30px to the left of
+    // where the textPath-character sampler placed the glyphs.
+    const d = getAttr(target as Record<string, unknown>, 'd') || ''
+    if (d) {
+      const bounds = computePathBounds(parsePathToPoints(d))
+      // Only re-base when the use *explicitly* sets x/y. Without an
+      // explicit x/y, the geometry sits where the path says it sits.
+      if (useNode && (getAttr(useNode, 'x') !== undefined || getAttr(useNode, 'y') !== undefined)) {
+        originX = bounds.x
+        originY = bounds.y
+      }
+      if (useW !== undefined && bounds.width > 0) scaleX = useW / bounds.width
+      if (useH !== undefined && bounds.height > 0) scaleY = useH / bounds.height
+    }
+  } else if (targetTag === 'polygon' || targetTag === 'polyline') {
+    const pts = getAttr(target as Record<string, unknown>, 'points') || ''
+    if (pts) {
+      const bounds = computePointsBounds(pts)
+      if (useNode && (getAttr(useNode, 'x') !== undefined || getAttr(useNode, 'y') !== undefined)) {
+        originX = bounds.x
+        originY = bounds.y
+      }
+      if (useW !== undefined && bounds.width > 0) scaleX = useW / bounds.width
+      if (useH !== undefined && bounds.height > 0) scaleY = useH / bounds.height
+    }
+  } else if (targetTag === 'line') {
+    // Phase 0.2B v4: a `<line>`'s endpoints are absolute in the parent
+    // coordinate system (same as path), so only re-base when the use
+    // explicitly overrides x/y.
+    const x1 = parseNumeric(target, 'x1', 0)
+    const y1 = parseNumeric(target, 'y1', 0)
+    const x2 = parseNumeric(target, 'x2', 0)
+    const y2 = parseNumeric(target, 'y2', 0)
+    if (useNode && (getAttr(useNode, 'x') !== undefined || getAttr(useNode, 'y') !== undefined)) {
+      originX = Math.min(x1, x2)
+      originY = Math.min(y1, y2)
+    }
+    const w = Math.abs(x2 - x1)
+    const h = Math.abs(y2 - y1)
+    if (useW !== undefined && w > 0) scaleX = useW / w
+    if (useH !== undefined && h > 0) scaleY = useH / h
   }
 
   // Result = T(useX, useY) * S(scaleX, scaleY) * T(-originX, -originY)
@@ -518,11 +770,30 @@ function applyElementContext<T extends Element>(element: T, context: ConversionC
       element.visible = explicitVisibility !== 'hidden' && explicitVisibility !== 'collapse'
     }
 
+    // Phase 3.3.1: forward z-index so the layout pass can re-order
+    // siblings. The attribute is parsed as a float; missing / NaN
+    // values are left undefined.
+    const zIndexRaw = parseFloat(getAttr(source, 'z-index') ?? '')
+    if (Number.isFinite(zIndexRaw)) {
+      (element as T & { zIndex?: number }).zIndex = zIndexRaw
+    }
+
     // Phase 1.3: stamp clip-path / mask / pattern references onto the
     // element so the PPTX layer can apply them.
     const clipPathRef = parseResourceId(getAttr(source, 'clip-path'))
     if (clipPathRef) {
       (element as T & { clipPathId?: string }).clipPathId = clipPathRef
+      // Phase 1.3.1: also stamp the resolved absolute clip rect. SVG
+      // `<clipPath>` coords are in the *user space of the referencing
+      // element* (which for a child of a transformed group is the
+      // group's local space, not absolute screen space). We transform
+      // the clip rect by the element's accumulated transform matrix
+      // here so the PPTX layer can intersect it with the element's
+      // absolute bounding box without re-deriving the geometry.
+      const resolved = resolveAbsoluteClipRect(clipPathRef, context)
+      if (resolved) {
+        ;(element as T & { clipPathRect?: { x: number; y: number; width: number; height: number } }).clipPathRect = resolved
+      }
     }
     const maskRef = parseResourceId(getAttr(source, 'mask'))
     if (maskRef) {
@@ -545,6 +816,97 @@ function parseResourceId(value: string | undefined): string | undefined {
   if (!value) return undefined
   const match = value.match(/^url\(#([^)]+)\)$/)
   return match ? match[1] : undefined
+}
+
+/**
+ * Phase 1.3.1: resolve a `<clipPath>` def's rect into absolute
+ * screen-space coords by combining the rect's own `transform`
+ * attribute (e.g. `rotate(45 cx cy)`) with the element's
+ * accumulated transform matrix. Returns `undefined` if the def is
+ * not a single-rect clipPath (the PPTX layer only supports
+ * single-rect clip landing; everything else is deferred to the
+ * "skip + warn" path).
+ *
+ * For rotated rects the result is the axis-aligned bounding box
+ * of the rotated shape — a conservative approximation, since PPTX
+ * cannot represent a rotated clip region natively. A `objectBoundingBox`
+ * clipPath (coords in 0..1 of the host's bbox) is normalised to
+ * the supplied element bounding box so the PPTX layer can crop
+ * consistently.
+ */
+function resolveAbsoluteClipRect(
+  clipPathId: string,
+  context: ConversionContext
+): { x: number; y: number; width: number; height: number } | undefined {
+  const def = context.defsMap.get(clipPathId)
+  if (!def || !looksLikeClipPath(def)) return undefined
+  const resource = convertClipPath(def, clipPathId)
+  if (!resource || resource.type !== 'rect') return undefined
+
+  if (resource.clipPathUnits === 'objectBoundingBox') {
+    // objectBoundingBox clips are interpreted in the host's
+    // local 0..1 space; we have no host bbox here so we can only
+    // fall back. Defer to the PPTX layer for the actual mapping.
+    return undefined
+  }
+
+  // 1. Apply the clipPath rect's own `transform` attribute to the
+  //    local rect to get the *element-user-space* rect (matches
+  //    what the SVG renderer would see inside the clipPath).
+  const rectDef = (def['rect'] as Record<string, unknown> | undefined)
+  const rectTransform = rectDef ? parseTransformToMatrix(getAttr(rectDef, 'transform')) : identityMatrix()
+
+  // Phase 5.1: PPTX's clipPath can only crop in axis-aligned
+  // rectangles. A rotated/scaled rect would need either a
+  // custom-geometry clip path or a rasterised mask, neither of
+  // which the current landing supports. The AABB fallback would
+  // either crop too much (rect partially outside its rotated
+  // bounds) or too little (AABB larger than the original shape,
+  // so the clip is a no-op). Either way, the user gets a
+  // silently-mis-clipped shape that doesn't match the SVG.
+  //
+  // For now, detect any non-trivial rect transform and warn +
+  // skip the clip so the un-clipped shape renders. The user
+  // sees the warning in the build log and knows to either
+  // flatten the rotation in the SVG or wait for a future
+  // PPTX custom-geometry clip path.
+  if (isNonTrivialTransform(rectTransform)) {
+    if (typeof console !== 'undefined') {
+      console.warn(`[svg-pptx] clipPath "${clipPathId}" has a rotated/scaled rect; clipping will be skipped.`)
+    }
+    return undefined
+  }
+
+  const inElementSpace = applyMatrixToBounds(
+    resource.x,
+    resource.y,
+    resource.width,
+    resource.height,
+    rectTransform
+  )
+
+  // 2. Apply the element's accumulated transform matrix to map
+  //    element-user-space → absolute screen space. This is what
+  //    the PPTX layer needs in order to intersect the clip with
+  //    the element's already-absolute bounding box.
+  return applyMatrixToBounds(
+    inElementSpace.x,
+    inElementSpace.y,
+    inElementSpace.width,
+    inElementSpace.height,
+    context.transformMatrix
+  )
+}
+
+/**
+ * Heuristic: does the matrix represent anything beyond translation?
+ * TransformMatrix is [a, b, c, d, tx, ty] (2D affine). Pure
+ * translation has `a = d = 1` and `b = c = 0`; anything else is
+ * rotation / scale / skew, which we can't faithfully render as a
+ * PPTX rect clip.
+ */
+function isNonTrivialTransform(matrix: TransformMatrix): boolean {
+  return !(matrix[0] === 1 && matrix[1] === 0 && matrix[2] === 0 && matrix[3] === 1)
 }
 
 function createChildContext(node: Record<string, unknown>, parent: ConversionContext, tagName?: string): ConversionContext {
@@ -600,7 +962,9 @@ function unwrapElement(element: Record<string, unknown>): { tagName: string; nod
     'text', 'image', 'video', 'audio', 'g', 'svg',
     // Phase 1: defs references and animation snapshots
     'use', 'symbol', 'textPath', 'switch',
-    'set', 'animate', 'animateTransform', 'animateMotion'
+    'set', 'animate', 'animateTransform', 'animateMotion',
+    // Phase 0.2B: HTML-in-SVG escape hatch
+    'foreignObject'
   ]) {
     if (tag in element && element[tag] && typeof element[tag] === 'object') {
       return {
@@ -628,12 +992,41 @@ function flattenGroupChildren(group: GroupElement): Element[] {
   return result
 }
 
-function looksLikeGradient(def: Record<string, unknown>): boolean {
-  return 'stop' in def || getAttr(def, 'x1') !== undefined || getAttr(def, 'cx') !== undefined || getAttr(def, 'r') !== undefined
+function looksLikeGradient(def: Record<string, unknown>, defs?: Map<string, Record<string, unknown>>): boolean {
+  if ('stop' in def) return true
+  for (const attr of ['x1', 'x2', 'y1', 'y2', 'cx', 'cy', 'fx', 'fy', 'fr', 'r', 'spreadMethod', 'gradientUnits', 'gradientTransform']) {
+    if (getAttr(def, attr) !== undefined) return true
+  }
+  // Phase 0.2B: a child gradient may carry only `xlink:href` (no stops,
+  // no own endpoints). Chase the href so we can still recognise it as a
+  // gradient. Cycle-guarded.
+  const href = getAttr(def, 'href') ?? getAttr(def, 'xlink:href')
+  if (!href || !defs) return false
+  const visited = new Set<string>()
+  let cursor: Record<string, unknown> | undefined = defs.get(href.replace(/^#/, ''))
+  while (cursor) {
+    if ('stop' in cursor) return true
+    for (const attr of ['x1', 'x2', 'y1', 'y2', 'cx', 'cy', 'fx', 'fy', 'fr', 'r', 'spreadMethod', 'gradientUnits', 'gradientTransform']) {
+      if (getAttr(cursor, attr) !== undefined) return true
+    }
+    const nextHref = getAttr(cursor, 'href') ?? getAttr(cursor, 'xlink:href')
+    if (!nextHref) return false
+    const cleaned = nextHref.replace(/^#/, '')
+    if (visited.has(cleaned)) return false
+    visited.add(cleaned)
+    cursor = defs.get(cleaned)
+  }
+  return false
 }
 
 function looksLikeFilter(def: Record<string, unknown>): boolean {
-  return 'feGaussianBlur' in def || 'feOffset' in def || 'feMerge' in def || 'feComponentTransfer' in def
+  return 'feGaussianBlur' in def ||
+    'feOffset' in def ||
+    'feMerge' in def ||
+    'feComponentTransfer' in def ||
+    'feDropShadow' in def ||
+    'feFlood' in def ||
+    'feColorMatrix' in def
 }
 
 function parseNumeric(node: Record<string, unknown>, name: string, fallback: number): number {

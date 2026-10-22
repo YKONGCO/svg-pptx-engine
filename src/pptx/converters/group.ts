@@ -17,6 +17,7 @@ import type { ImageElement } from '../../sif/types/elements/image'
 import type { LineElement } from '../../sif/types/elements/line'
 import type { VideoElement } from '../../sif/types/elements/video'
 import type { AudioElement } from '../../sif/types/elements/audio'
+import type { SlideResources } from '../../sif/types/document'
 import { convertShape } from './shape'
 import { convertTextOrFormula } from './text'
 import { convertImage } from './image'
@@ -30,6 +31,14 @@ import { convertAudio } from './audio'
 export interface ConvertedGroupChild {
   type: 'shape' | 'text' | 'formula' | 'fragments' | 'image' | 'line' | 'video' | 'audio'
   data: any
+  /**
+   * The original SIF element the conversion was derived from.
+   * Carried through so the post-processor can rebuild per-element
+   * hints (cap, join, fillRule) without re-running the shape
+   * converter. `undefined` for nested-group entries, which are
+   * flattened on the way out and don't emit XML directly.
+   */
+  source?: Element
 }
 
 /**
@@ -49,35 +58,35 @@ function applyGroupTransform<T extends Element>(
 /**
  * Convert a single SIF element to pptxgenjs group child format
  */
-function convertElementToGroupChild(element: Element): ConvertedGroupChild | null {
+function convertElementToGroupChild(element: Element, resources?: SlideResources): ConvertedGroupChild | null {
   if (element.visible === false) {
     return null
   }
 
   switch (element.type) {
     case 'shape': {
-      const converted = convertShape(element as ShapeElement)
-      return { type: 'shape', data: converted }
+      const converted = convertShape(element as ShapeElement, undefined, resources)
+      return { type: 'shape', data: converted, source: element }
     }
     case 'text': {
       const converted = convertTextOrFormula(element as TextElement)
-      return { type: converted.type as any, data: converted }
+      return { type: converted.type as any, data: converted, source: element }
     }
     case 'image': {
       const converted = convertImage(element as ImageElement)
-      return { type: 'image', data: converted }
+      return { type: 'image', data: converted, source: element }
     }
     case 'line': {
       const converted = convertLine(element as LineElement)
-      return { type: 'line', data: converted }
+      return { type: 'line', data: converted, source: element }
     }
     case 'video': {
       const converted = convertVideo(element as VideoElement)
-      return { type: 'video', data: converted }
+      return { type: 'video', data: converted, source: element }
     }
     case 'audio': {
       const converted = convertAudio(element as AudioElement)
-      return { type: 'audio', data: converted }
+      return { type: 'audio', data: converted, source: element }
     }
     case 'group':
       // Groups are handled recursively by flattenGroupElements
@@ -94,17 +103,19 @@ function convertElementToGroupChild(element: Element): ConvertedGroupChild | nul
  */
 export function flattenGroupElements(
   group: GroupElement,
-  convertElementFn?: (element: Element) => any
+  convertElementFn?: (element: Element) => any,
+  resources?: SlideResources
 ): ConvertedGroupChild[] {
   // SIF uses global coordinates - children already have absolute positions
-  return flattenWithOffset(group, 0, 0, convertElementFn)
+  return flattenWithOffset(group, 0, 0, convertElementFn, resources)
 }
 
 function flattenWithOffset(
   group: GroupElement,
   offsetX: number,
   offsetY: number,
-  convertElementFn?: (element: Element) => any
+  convertElementFn?: (element: Element) => any,
+  resources?: SlideResources
 ): ConvertedGroupChild[] {
   const results: ConvertedGroupChild[] = []
   const sortedChildren = [...group.children].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
@@ -112,7 +123,7 @@ function flattenWithOffset(
   for (const child of sortedChildren) {
     if (child.type === 'group') {
       const childGroup = child as GroupElement
-      results.push(...flattenWithOffset(childGroup, offsetX, offsetY, convertElementFn))
+      results.push(...flattenWithOffset(childGroup, offsetX, offsetY, convertElementFn, resources))
     } else {
       // SIF groups don't have transforms - children already have absolute coordinates
       // No transformation needed here
@@ -120,7 +131,7 @@ function flattenWithOffset(
 
       const converted = convertElementFn
         ? convertElementFn(globalElement)
-        : convertElementToGroupChild(globalElement)
+        : convertElementToGroupChild(globalElement, resources)
 
       if (converted) {
         results.push(converted as ConvertedGroupChild)
@@ -154,10 +165,10 @@ export function createGroupBackground(_group: GroupElement): null {
  * Note: SIF groups are purely logical - no visual properties like background, transform, etc.
  * If you need visual grouping, use a shape element instead.
  */
-export function convertGroup(group: GroupElement): ConvertedGroupChild[] {
+export function convertGroup(group: GroupElement, resources?: SlideResources): ConvertedGroupChild[] {
   // SIF groups don't have visual properties, so no background to add
   // Just flatten and return children
-  return flattenGroupElements(group)
+  return flattenGroupElements(group, undefined, resources)
 }
 
 /**

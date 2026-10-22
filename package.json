@@ -1,6 +1,6 @@
 {
   "name": "svg-pptx-engine",
-  "version": "1.0.1",
+  "version": "1.2.0",
   "private": true,
   "description": "SVG to PPTX converter with intermediate format",
   "main": "dist/index.js",
@@ -16,15 +16,13 @@
     "build:pptxgen": "npm run build --workspace=pptxgenjs",
     "build:all": "npm run build",
     "postinstall": "npm run build",
-    "convert:svg": "node scripts/svg-to-pptx.js",
-    "convert:json": "node scripts/convert-json.js",
     "generate:pptx": "node scripts/generate-pptx.js",
     "dev": "tsc --watch",
     "lint": "eslint src --ext .ts",
-    "test": "jest",
-    "test:coverage": "jest --coverage",
-    "test:integration": "jest tests/integration tests/svg/svg-inputs",
-    "test:visual": "jest tests/visual",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/integration tests/svg/svg-inputs",
+    "test:visual": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/visual",
     "package": "bash scripts/build-package.sh"
   },
   "keywords": [
@@ -35,29 +33,34 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "fast-xml-parser": "^5.5.8",
+    "css-tree": "^3.2.1",
+    "fast-xml-parser": "^5.9.3",
     "jszip": "^3.10.1",
     "mathml2omml": "^0.5.0",
-    "pptxgenjs": "file:packages/pptxgenjs"
+    "parse5": "^7.3.0",
+    "pptxgenjs": "4.0.1"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^29.0.3",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@types/css-tree": "^2.3.11",
+    "@types/jest": "^30.0.0",
+    "@types/jszip": "^3.4.0",
+    "@types/node": "^26.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.62.0",
+    "@typescript-eslint/parser": "^8.62.0",
+    "eslint": "^10.5.0",
+    "jest": "^30.4.2",
+    "rollup": "^4.62.2",
+    "rollup-plugin-typescript2": "^0.37.0",
+    "ts-jest": "^29.4.11",
+    "tslib": "^2.8.1",
+    "typescript": "^6.0.3"
   },
   "bundledDependencies": [
     "pptxgenjs",
-    "mathml2omml"
-  ],
-  "devDependencies": {
-    "@rollup/plugin-commonjs": "^28.0.1",
-    "@rollup/plugin-node-resolve": "^16.0.1",
-    "@types/jest": "^30.0.0",
-    "@types/jszip": "^3.4.0",
-    "@types/node": "^25.5.0",
-    "@typescript-eslint/eslint-plugin": "^8.57.1",
-    "@typescript-eslint/parser": "^8.57.1",
-    "eslint": "^10.0.3",
-    "jest": "^30.3.0",
-    "rollup": "^4.60.0",
-    "rollup-plugin-typescript2": "^0.36.0",
-    "ts-jest": "^29.4.6",
-    "tslib": "^2.8.0",
-    "typescript": "^5.6.3"
-  }
+    "mathml2omml",
+    "parse5",
+    "css-tree"
+  ]
 }

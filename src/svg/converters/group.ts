@@ -138,6 +138,50 @@ export function applyMatrixToBounds(
   }
 }
 
+/**
+ * Like `applyMatrixToBounds`, but preserves the shape's original
+ * intrinsic size: rotation is recorded as `rotation`, translation
+ * repositions the centre, and non-uniform scale is applied to
+ * width/height. This avoids the AABB inflation that occurs when a
+ * rotated rectangle is converted through `applyMatrixToBounds` (the
+ * AABB of a rotated 80x40 rect is 89.28x74.64 at 30°, which would
+ * make the rendered shape larger than the source SVG intended).
+ */
+export function applyMatrixToShapeBounds(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  matrix: TransformMatrix
+): { x: number; y: number; width: number; height: number } {
+  const { translateX, translateY, scaleX, scaleY, rotation } = decomposeMatrix(matrix)
+  const newWidth = width * scaleX
+  const newHeight = height * scaleY
+
+  if (Math.abs(rotation) < 1e-6) {
+    return {
+      x: x * scaleX + translateX,
+      y: y * scaleY + translateY,
+      width: newWidth,
+      height: newHeight
+    }
+  }
+
+  // With rotation, the original top-left (x, y) gets rotated around
+  // the rect's centre, then translated. Compute the new centre by
+  // applying the full matrix to the original centre, then place the
+  // rect's top-left so the (unchanged) centre lands on that point.
+  const cx = x + width / 2
+  const cy = y + height / 2
+  const newCentre = applyMatrixToPoint(cx, cy, matrix)
+  return {
+    x: newCentre.x - newWidth / 2,
+    y: newCentre.y - newHeight / 2,
+    width: newWidth,
+    height: newHeight
+  }
+}
+
 export function applyTransform(
   x: number,
   y: number,
@@ -209,12 +253,102 @@ export function createGroup(
   children: Element[],
   id: string
 ): GroupElement {
-  return {
+  const layout = getAttr(groupData, 'layout') as GroupElement['layout']
+  const group: GroupElement = {
     id,
     type: 'group',
     children,
     visible: getVisibility(groupData)
   }
+
+  // Phase 3.3.1: z-index is read regardless of layout, so callers
+  // can layer non-layout groups (typical for `z-index` on a card
+  // that lives on a slide background).
+  const zIndexRaw = parseFloat(getAttr(groupData, 'z-index') ?? '')
+  if (Number.isFinite(zIndexRaw)) group.zIndex = zIndexRaw
+
+  // Phase 3.3.4: pass through effect metadata when a `<g>` has
+  // a filter / shadow. The PPTX emitter reads `group.effect` and
+  // converts it to a group-level `<a:effectLst>`.
+  const effectRaw = getAttr(groupData, 'data-effect')
+  if (effectRaw) {
+    try {
+      const parsed = JSON.parse(effectRaw)
+      if (parsed && typeof parsed === 'object') {
+        group.effect = parsed as GroupElement['effect']
+      }
+    } catch {
+      // ignore — bad JSON, fall back to no group effect
+    }
+  }
+
+  if (layout === 'block' || layout === 'flex' || layout === 'grid' || layout === 'inline' || layout === 'absolute') {
+    const x = parseFloat(getAttr(groupData, 'x') ?? '')
+    const y = parseFloat(getAttr(groupData, 'y') ?? '')
+    const width = parseFloat(getAttr(groupData, 'width') ?? '')
+    const height = parseFloat(getAttr(groupData, 'height') ?? '')
+    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(width) && Number.isFinite(height)) {
+      group.layout = layout
+      group.x = x
+      group.y = y
+      group.width = width
+      group.height = height
+    }
+    const gap = parseFloat(getAttr(groupData, 'gap') ?? '')
+    if (Number.isFinite(gap)) group.gap = gap
+
+    // Phase 3.2.2: overflow strategy on the group itself.
+    const overflow = getAttr(groupData, 'overflow')
+    if (overflow === 'visible' || overflow === 'hidden' || overflow === 'clip' || overflow === 'scroll') {
+      group.overflow = overflow
+    }
+    // Phase 3.2.3: per-child align-self overrides. Accepts a
+    // comma-separated list like `align-self="center, end, baseline"`.
+    const alignSelf = getAttr(groupData, 'align-self')
+    if (alignSelf) group.alignSelf = parseAlignSelfList(alignSelf)
+
+    if (layout === 'flex') {
+      const dir = getAttr(groupData, 'flex-direction')
+      if (dir === 'row' || dir === 'column' || dir === 'row-reverse' || dir === 'column-reverse') {
+        group.flexDirection = dir
+      }
+      const justify = getAttr(groupData, 'justify-content')
+      if (justify === 'flex-start' || justify === 'center' || justify === 'end' || justify === 'space-between' || justify === 'space-around' || justify === 'space-evenly') {
+        group.justifyContent = justify
+      }
+      const align = getAttr(groupData, 'align-items')
+      if (align === 'flex-start' || align === 'center' || align === 'end' || align === 'stretch') {
+        group.alignItems = align
+      }
+      // Phase 3.1.1: flex-wrap strategy.
+      const wrap = getAttr(groupData, 'flex-wrap')
+      if (wrap === 'nowrap' || wrap === 'wrap' || wrap === 'wrap-reverse') {
+        group.flexWrap = wrap
+      }
+    }
+    if (layout === 'grid') {
+      const cols = getAttr(groupData, 'grid-template-columns')
+      if (cols) group.gridTemplateColumns = parseTrackList(cols)
+      const rows = getAttr(groupData, 'grid-template-rows')
+      if (rows) group.gridTemplateRows = parseTrackList(rows)
+    }
+  }
+  return group
+}
+
+function parseAlignSelfList(value: string): GroupElement['alignSelf'] {
+  const valid = new Set(['auto', 'flex-start', 'center', 'end', 'stretch', 'baseline'])
+  return value
+    .split(/[\s,]+/)
+    .map(s => s.trim())
+    .filter((s): s is 'auto' | 'flex-start' | 'center' | 'end' | 'stretch' | 'baseline' => valid.has(s))
+}
+
+function parseTrackList(value: string): string[] {
+  return value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
 }
 
 export function matrixToTransformString(matrix: TransformMatrix): string {

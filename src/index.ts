@@ -1,6 +1,6 @@
 import { PROTOCOL_VERSION } from './sif/version'
-import type { SlideDocument } from './sif/types/document'
-import { svgToSif, type SvgToSifOptions } from './svg/converter'
+import type { SlideDocument, SlideResources } from './sif/types/document'
+import { svgToSif, svgToSifWithDefs, type SvgToSifOptions } from './svg/converter'
 import { getAttr, getSvgRoot, parseSVG } from './svg/parser'
 import {
   PptxGenerator,
@@ -21,6 +21,20 @@ export {
   type PptxGeneratorOptions,
   type PptxWriteOptions
 } from './pptx/generator'
+export {
+  FONT_BRIDGE,
+  DEFAULT_FONT_BRIDGE,
+  DEFAULT_FONT_PRESETS,
+  containsCjk,
+  resolveFontBridge,
+  resolvePptxFontFace,
+  resolvePptxEastAsiaFont,
+  resolvePptxLatinFont,
+  resolveWebFontFamily,
+  pickPptxFontForText,
+  type FontBridge,
+  type FontPreset
+} from './utils/font'
 
 export interface SvgToDocumentOptions extends SvgToSifOptions {
   slideId?: string
@@ -69,19 +83,44 @@ function parseSlideDocument(input: string | SlideDocument): SlideDocument {
 }
 
 export function svgToSlideDocument(svgString: string, options?: SvgToDocumentOptions): SlideDocument {
-  const elements = svgToSif(svgString, options)
+  const { elements, defs } = svgToSifWithDefs(svgString, options)
   const { width, height } = getSvgDimensions(svgString)
+
+  // Thread the resolved clipPath / mask / pattern defs into the
+  // slide so the PPTX layer can look them up by id. Patterns are
+  // kept as the full PatternTemplate (with children); the PPTX
+  // layer rasterises them lazily when stamping a tile.
+  const resources: SlideResources = {}
+  if (defs.clipPaths.size > 0) {
+    resources.clipPaths = Object.fromEntries(defs.clipPaths)
+  }
+  if (defs.masks.size > 0) {
+    resources.masks = Object.fromEntries(defs.masks)
+  }
+  if (defs.patterns.size > 0) {
+    // Patterns are passed through as a JSON-friendly shallow record
+    // (the tile-children are SIF Elements; we re-attach them below).
+    // The PPTX layer re-uses them directly.
+    const patternRecord: Record<string, any> = {}
+    for (const [id, template] of defs.patterns) {
+      patternRecord[id] = template
+    }
+    resources.patterns = patternRecord as SlideResources['patterns']
+  }
+
+  const slide: SlideDocument['slides'][number] = {
+    id: options?.slideId ?? 'slide1',
+    elements
+  }
+  if (Object.keys(resources).length > 0) {
+    slide.resources = resources
+  }
 
   return {
     version: PROTOCOL_VERSION,
     width,
     height,
-    slides: [
-      {
-        id: options?.slideId ?? 'slide1',
-        elements
-      }
-    ],
+    slides: [slide],
     meta: {
       title: options?.title ?? 'SVG Conversion',
       author: options?.author ?? 'svg-pptx-engine',
@@ -124,4 +163,46 @@ export async function jsonToPptxFile(
   const generator = createPptxGenerator(parseSlideDocument(input), options)
   generator.generate()
   return generator.writeFile({ fileName })
+}
+
+// =============================================================================
+// HTML → SIF → PPTX (Phase 4 / M0-M1+)
+// =============================================================================
+
+import { htmlToSif, htmlToSlideDocument, type HtmlToDocumentOptions, type HtmlToPptxOptions } from './html/converter'
+import { parseHTML, type HtmlElement, type HtmlText, type HtmlNode, type ParsedHtmlDocument } from './html/parser'
+import { htmlToStyleMap, type StyleMap, type ComputedStyle } from './html/css/pipeline'
+
+export {
+  htmlToSif,
+  htmlToSlideDocument,
+  type HtmlToDocumentOptions,
+  type HtmlToPptxOptions,
+}
+export {
+  parseHTML,
+  type HtmlElement,
+  type HtmlText,
+  type HtmlNode,
+  type ParsedHtmlDocument,
+}
+export { htmlToStyleMap, type StyleMap, type ComputedStyle }
+
+/** Convert an HTML string to a PPTX buffer. */
+export function htmlToPptx(
+  html: string,
+  options?: HtmlToPptxOptions
+): Promise<string | Uint8Array> {
+  const document = htmlToSlideDocument(html, options)
+  return generatePptx(document, options)
+}
+
+/** Convert an HTML string to a .pptx file on disk. */
+export async function htmlToPptxFile(
+  html: string,
+  fileName: string,
+  options?: HtmlToPptxOptions
+): Promise<string> {
+  const document = htmlToSlideDocument(html, options)
+  return generatePptxFile(document, fileName)
 }

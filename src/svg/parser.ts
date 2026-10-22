@@ -94,7 +94,15 @@ function extractDefIds(def: Record<string, unknown>, defsMap: Map<string, Record
 export function getChildElements(element: Record<string, unknown>): Record<string, unknown>[] {
   const orderedChildren = getOrderedChildren(element)
   if (orderedChildren) {
-    return orderedChildren
+    // Phase 0.2B v2: filter out `#text` / `#cdata-section` wrappers —
+    // they're only meaningful inside mixed-content elements (`<text>`,
+    // `<foreignObject>`) and would otherwise crash converters that
+    // expect element wrappers.
+    return orderedChildren.filter(child => {
+      const keys = Object.keys(child)
+      const tag = keys[0]
+      return tag !== '#text' && tag !== '#cdata-section'
+    })
   }
 
   const children: Record<string, unknown>[] = []
@@ -103,7 +111,9 @@ export function getChildElements(element: Record<string, unknown>): Record<strin
     'polygon', 'polyline', 'text', 'g', 'svg',
     // Phase 1: defs references and animation snapshots
     'use', 'symbol', 'textPath', 'switch',
-    'set', 'animate', 'animateTransform', 'animateMotion'
+    'set', 'animate', 'animateTransform', 'animateMotion',
+    // Phase 0.2B: HTML-in-SVG escape hatch
+    'foreignObject'
   ]
 
   for (const key of Object.keys(element)) {
@@ -184,7 +194,17 @@ function annotateNode(
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue
 
     const tagName = Object.keys(entry as Record<string, unknown>).find(key => key !== ':@')
-    if (!tagName || tagName === '#text' || tagName === '#cdata-section') continue
+    if (!tagName) continue
+
+    // Phase 0.2B v2: keep `#text` / `#cdata-section` runs in the
+    // ordered list so mixed-content elements (e.g. `<text>H<tspan>2</tspan>SO</text>`)
+    // can be walked in document order. Plain-text wrappers carry the
+    // string value directly; consumers must handle both shapes.
+    if (tagName === '#text' || tagName === '#cdata-section') {
+      const raw = (entry as Record<string, unknown>)[tagName]
+      wrappedChildren.push({ [tagName]: typeof raw === 'string' ? raw : String(raw ?? '') })
+      continue
+    }
 
     const child = takeMatchedChild(node, tagName, usageCount)
     if (!child) continue
@@ -212,16 +232,31 @@ function takeMatchedChild(
   usageCount: Map<string, number>
 ): Record<string, unknown> | undefined {
   const source = node[tagName]
-  if (!source || typeof source !== 'object') {
+  if (source === undefined || source === null) {
     return undefined
   }
 
   const currentIndex = usageCount.get(tagName) ?? 0
   usageCount.set(tagName, currentIndex + 1)
 
+  // Phase 0.2B v2: a simplified leaf like `<h1>Title</h1>` parses to
+  // `{ h1: 'Title' }` in the unordered tree. Wrap the string into a
+  // `{ '#text': 'Title' }` synthetic node so consumers walking the
+  // ordered tree can still read it as a text-bearing child.
+  if (typeof source === 'string' || typeof source === 'number' || typeof source === 'boolean') {
+    return { '#text': String(source) }
+  }
+
   if (Array.isArray(source)) {
     const item = source[currentIndex]
+    if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
+      return { '#text': String(item) }
+    }
     return item && typeof item === 'object' ? item as Record<string, unknown> : undefined
+  }
+
+  if (typeof source !== 'object') {
+    return undefined
   }
 
   return currentIndex === 0 ? source as Record<string, unknown> : undefined
@@ -230,6 +265,37 @@ function takeMatchedChild(
 function getOrderedChildren(element: Record<string, unknown>): Record<string, unknown>[] | undefined {
   const orderedChildren = (element as Record<string, unknown> & { [ORDERED_CHILDREN]?: Record<string, unknown>[] })[ORDERED_CHILDREN]
   return Array.isArray(orderedChildren) ? orderedChildren : undefined
+}
+
+/**
+ * Phase 1: ordered, mixed-content children walker. Returns each child
+ * as `{ tag, node }` in document order, including raw `#text` runs.
+ * `tag` is the element tag name (e.g. `'tspan'`, `'textPath'`) or the
+ * sentinel `'#text'` for plain text nodes. Returns `undefined` when no
+ * ordered children were captured for this element (callers should fall
+ * back to the unordered map keys).
+ */
+export function getOrderedMixedChildren(
+  element: Record<string, unknown>
+): Array<{ tag: string; node: Record<string, unknown>; text?: string }> | undefined {
+  const ordered = getOrderedChildren(element)
+  if (!ordered) return undefined
+  const out: Array<{ tag: string; node: Record<string, unknown>; text?: string }> = []
+  for (const wrapped of ordered) {
+    if (!wrapped || typeof wrapped !== 'object') continue
+    const keys = Object.keys(wrapped)
+    if (keys.length === 0) continue
+    const tag = keys[0]
+    const value = wrapped[tag]
+    if (tag === '#text' || tag === '#cdata-section') {
+      out.push({ tag: '#text', node: wrapped, text: String(value ?? '') })
+      continue
+    }
+    if (value && typeof value === 'object') {
+      out.push({ tag, node: value as Record<string, unknown> })
+    }
+  }
+  return out
 }
 
 /**

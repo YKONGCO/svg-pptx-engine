@@ -210,6 +210,15 @@ export function isValidHexColor(hex: string): boolean {
 
 /**
  * Convert dash array string to pptxgenjs dash type
+ *
+ * Maps SVG `stroke-dasharray` patterns to PPTX preset dashes. The
+ * pre-v2 fallthrough returned `'solid'` for any 2-element pattern
+ * that didn't match one of the three hard-coded branches — meaning
+ * e.g. `6 4` (slightly dash-heavy) silently collapsed to a solid
+ * stroke. v2: any 2-element pattern that doesn't look like dots
+ * (gap ≥ 2× dash) is treated as a dash pattern. PowerPoint has
+ * no native "round-cap-dash" semantic so the cap-style loses
+ * granularity; we surface the cap via XML post-processing.
  */
 export function dashArrayToDashType(dashArray?: string): DashTypeValue {
   if (!dashArray) return 'solid'
@@ -223,13 +232,13 @@ export function dashArrayToDashType(dashArray?: string): DashTypeValue {
 
   if (parts.length === 2) {
     const [dash, gap] = parts
+    // dotty pattern: dash is tiny (≤1) OR gap is much larger than dash
     if (dash <= 1 || gap >= dash * 2) return 'sysDot'
-    if (Math.abs(dash - gap) <= 1.5) {
-      return dash >= 7 ? 'lgDash' : 'dash'
-    }
-    if (gap <= dash * 0.6) {
-      return dash >= 7 ? 'lgDash' : 'dash'
-    }
+    // Everything else is a dash pattern. PowerPoint only exposes
+    // 'dash' (≈6pt-on/6pt-off at 1×) and 'lgDash' (≈12pt-on/12pt-off);
+    // we pick the closer match by dash magnitude. This covers the
+    // pre-v2 blind spot (e.g. `6 4`, `8 4`, `12 4`).
+    return dash >= 7 ? 'lgDash' : 'dash'
   }
 
   if (parts.length === 4) {
@@ -237,6 +246,10 @@ export function dashArrayToDashType(dashArray?: string): DashTypeValue {
     if (c <= a * 0.6 && d <= b * 1.5) {
       return a >= 7 ? 'lgDashDot' : 'dashDot'
     }
+    // Fallthrough for 4-element patterns that don't fit the
+    // dash-dot ratio (e.g. `10 5 2 5` was the documented test):
+    // pick dashDot by magnitude so the dashes render.
+    return a >= 7 ? 'lgDashDot' : 'dashDot'
   }
 
   if (parts.length === 6) {

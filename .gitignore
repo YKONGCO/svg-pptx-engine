@@ -11,3 +11,6 @@ svg2pptx-standalone.zip
 dist-npm-publish/
 coverage/
 *.log
+output
+output_png/
+bin/svg2pptx.js

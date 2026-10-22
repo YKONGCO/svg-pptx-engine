@@ -5,6 +5,7 @@
     "lib": ["ES2020", "DOM"],
     "outDir": "./dist",
     "rootDir": "./src",
+    "types": ["node", "jest"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -15,5 +16,5 @@
     "resolveJsonModule": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "example", "packages/"]
+  "exclude": ["node_modules", "dist", "example", "packages/", "src/**/*.test.ts"]
 }

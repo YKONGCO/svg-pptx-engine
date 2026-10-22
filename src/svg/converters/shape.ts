@@ -17,6 +17,7 @@ import { parseColor, parseOpacity, parseDashArray, parseLineCap, parseLineJoin }
 import { getAttr } from '../parser'
 import {
   applyMatrixToBounds,
+  applyMatrixToShapeBounds,
   applyMatrixToPoint,
   decomposeMatrix,
   identityMatrix,
@@ -173,7 +174,7 @@ export function convertRect(element: Record<string, unknown>, id: string, option
   const rx = getOptionalNumberAttr(element, 'rx') ?? getOptionalNumberAttr(element, 'ry')
   const ry = getOptionalNumberAttr(element, 'ry') ?? getOptionalNumberAttr(element, 'rx')
   const matrix = resolveMatrix(element, options)
-  const bounds = applyMatrixToBounds(x, y, width, height, matrix)
+  const bounds = applyMatrixToShapeBounds(x, y, width, height, matrix)
 
   return withBaseProps({
     id,
@@ -398,7 +399,7 @@ function extractFill(
   }
 }
 
-function extractStroke(
+export function extractStroke(
   element: Record<string, unknown>,
   gradientMap?: Map<string, LinearGradient | RadialGradient>
 ): Stroke | undefined {
@@ -479,7 +480,7 @@ function getOptionalNumberAttr(element: Record<string, unknown>, name: string): 
   return Number.isNaN(parsed) ? undefined : parsed
 }
 
-function computePathBounds(points: PathPoint[], strokeWidth: number = 0): { x: number; y: number; width: number; height: number } {
+export function computePathBounds(points: PathPoint[], strokeWidth: number = 0): { x: number; y: number; width: number; height: number } {
   if (points.length === 0) {
     return { x: 0, y: 0, width: 0, height: 0 }
   }
@@ -673,7 +674,7 @@ function angleBetween(u: { x: number; y: number }, v: { x: number; y: number }):
   return Math.atan2(det, dot)
 }
 
-function computePointsBounds(points: string): { x: number; y: number; width: number; height: number } {
+export function computePointsBounds(points: string): { x: number; y: number; width: number; height: number } {
   const nums = points
     .trim()
     .split(/[\s,]+/)
@@ -724,7 +725,7 @@ function distanceBetweenPoints(a: { x: number; y: number }, b: { x: number; y: n
   return Math.hypot(b.x - a.x, b.y - a.y)
 }
 
-function transformPathData(d: string, matrix: TransformMatrix): string {
+export function transformPathData(d: string, matrix: TransformMatrix): string {
   const tokens = d.match(/[a-zA-Z]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/g) || []
   const out: string[] = []
   let index = 0
